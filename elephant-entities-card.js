@@ -137,13 +137,6 @@ class ElephantEntityCard extends HTMLElement {
     const domain = stateObj.entity_id.split(".")[0];
     const isActive = ["on", "open", "playing", "home"].includes(stateObj.state);
 
-    if (
-      (!this.config.tap_action || this.config.tap_action.action === "more-info") &&
-      ["light", "switch", "fan", "input_boolean"].includes(domain)
-    ) {
-      this.config.tap_action = { action: "toggle" };
-    }
-
     icon.setAttribute(
       "icon",
       this.config.icon || stateObj.attributes.icon || "mdi:help-circle"
@@ -177,9 +170,11 @@ class ElephantEntityCard extends HTMLElement {
 
     card.style.color = this.config.text_color || "";
 
+    // Friendly Name logic
     this.shadowRoot.querySelector(".primary").textContent =
       this.config.name ? this.config.name : (stateObj.attributes.friendly_name || this.config.entity);
 
+    // Friendly Unit logic
     const unit = this.config.unit ? this.config.unit : (stateObj.attributes.unit_of_measurement || "");
 
     this.shadowRoot.querySelector(".secondary").textContent =
@@ -193,17 +188,11 @@ class ElephantEntityCard extends HTMLElement {
       : { r:255,g:255,b:255 };
   }
 
-  getCardSize() {
-    return 1;
-  }
+  getCardSize() { return 1; }
 
-  static getStubConfig() {
-    return { entity: "", state_color: true, icon: "mdi:elephant" };
-  }
+  static getConfigElement() { return document.createElement("elephant-entity-card-editor"); }
 
-  static getConfigElement() {
-    return document.createElement("elephant-entity-card-editor");
-  }
+  static getStubConfig() { return { entity: "", state_color: true, icon: "mdi:elephant" }; }
 }
 
 /* 🐘 Visual Editor */
@@ -212,19 +201,19 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    const picker = this.shadowRoot?.querySelector("ha-entity-picker");
-    if (picker) {
-      picker.hass = hass;
+    if (this.shadowRoot) {
+      const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
+      if (entityPicker) entityPicker.hass = hass;
     }
   }
 
   setConfig(config) {
-    this._config = { ...config };
-    if (!this.shadowRoot) { 
-      this.attachShadow({mode:"open"}); 
-      this._render(); 
+    this._config = config;
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this._render();
     }
-    this._update();
+    this._updateDisplay();
   }
 
   _render() {
@@ -239,13 +228,10 @@ class ElephantEntityCardEditor extends HTMLElement {
       </style>
 
       <div class="form">
-        <ha-entity-picker 
-          label="Entity" 
-          configValue="entity"
-        ></ha-entity-picker>
-        <ha-textfield label="Friendly Name" configValue="name"></ha-textfield>
-        <ha-textfield label="Friendly Unit" configValue="unit"></ha-textfield>
-        <ha-icon-picker label="Icon" configValue="icon"></ha-icon-picker>
+        <ha-entity-picker label="Entity" .hass="${this._hass}" .value="${this._config.entity}" configValue="entity"></ha-entity-picker>
+        <ha-textfield label="Friendly Name" .value="${this._config.name || ''}" configValue="name"></ha-textfield>
+        <ha-textfield label="Friendly Unit" .value="${this._config.unit || ''}" configValue="unit"></ha-textfield>
+        <ha-icon-picker label="Icon" .value="${this._config.icon || ''}" configValue="icon"></ha-icon-picker>
 
         <div class="row">
           <div class="color-item">
@@ -277,49 +263,36 @@ class ElephantEntityCardEditor extends HTMLElement {
         </ha-formfield>
       </div>
     `;
-    this._attachListeners();
-  }
 
-  _attachListeners() {
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
-      el.addEventListener("value-changed", ev => {
-        const key = el.getAttribute("configValue");
-        const value = ev.detail.value;
-        this._valueChanged(key, value);
-      });
-
+      // Listen for changes on HA specific components
+      el.addEventListener("value-changed", ev => this._valueChanged(el.getAttribute("configValue"), ev.detail.value));
+      
+      // Listen for changes on standard inputs (colors)
       if (el.tagName === "INPUT") {
-        el.addEventListener("input", ev => {
-          const key = el.getAttribute("configValue");
-          this._valueChanged(key, ev.target.value);
-        });
+        el.addEventListener("input", ev => this._valueChanged(el.getAttribute("configValue"), ev.target.value));
       }
 
+      // Listen for changes on switches
       if (el.tagName === "HA-SWITCH") {
-        el.addEventListener("change", ev => {
-          const key = el.getAttribute("configValue");
-          this._valueChanged(key, ev.target.checked);
-        });
+        el.addEventListener("change", ev => this._valueChanged(el.getAttribute("configValue"), ev.target.checked));
       }
     });
   }
 
-  _update() {
+  _updateDisplay() {
     if (!this._config) return;
 
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
       const key = el.getAttribute("configValue");
-      const val = this._config[key];
+      const value = this._config[key];
 
       if (el.tagName === "HA-SWITCH") {
-        el.checked = val !== undefined ? val : true;
+        el.checked = value !== undefined ? value : true;
       } else if (el.tagName === "INPUT") {
-        el.value = val || "#ffffff";
-      } else if (el.tagName === "HA-ENTITY-PICKER") {
-        el.value = val || "";
-        el.hass = this._hass;
+        el.value = value || "#ffffff";
       } else {
-        el.value = val || "";
+        el.value = value || "";
       }
     });
 
@@ -337,7 +310,7 @@ class ElephantEntityCardEditor extends HTMLElement {
 
     this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: newConfig },
-      bubbles: true, 
+      bubbles: true,
       composed: true
     }));
   }
@@ -348,11 +321,11 @@ customElements.define("elephant-entity-card-editor", ElephantEntityCardEditor);
 customElements.define("elephant-entity-card", ElephantEntityCard);
 
 window.customCards = window.customCards || [];
-if (!window.customCards.some(c => c.type==="elephant-entity-card")) {
+if (!window.customCards.some(c => c.type === "elephant-entity-card")) {
   window.customCards.push({
-    type:"elephant-entity-card",
-    name:"Elephant Entity Card",
-    preview:true,
-    description:"Glass-style entity card with actions, blur, icon/name override and state coloring."
+    type: "elephant-entity-card",
+    name: "Elephant Entity Card",
+    preview: true,
+    description: "Glass-style entity card with actions, blur, and friendly overrides."
   });
 }
