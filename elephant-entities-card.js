@@ -177,19 +177,14 @@ class ElephantEntityCard extends HTMLElement {
 
     card.style.color = this.config.text_color || "";
 
-    // Fix applied here for Name Override
+    // Text Display Logic
     this.shadowRoot.querySelector(".primary").textContent =
-      this.config.name && this.config.name.trim() !== "" 
-        ? this.config.name 
-        : (stateObj.attributes.friendly_name || this.config.entity);
+      this.config.name ? this.config.name : (stateObj.attributes.friendly_name || this.config.entity);
 
-    // Fix applied here for Unit Override
-    const unit = this.config.unit && this.config.unit.trim() !== "" 
-        ? this.config.unit 
-        : (stateObj.attributes.unit_of_measurement || "");
+    const unit = this.config.unit ? this.config.unit : (stateObj.attributes.unit_of_measurement || "");
 
     this.shadowRoot.querySelector(".secondary").textContent =
-      `${stateObj.state} ${unit}`.trim();
+      `${stateObj.state}${unit ? ' ' + unit : ''}`.trim();
   }
 
   _hexToRgb(hex) {
@@ -225,8 +220,11 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { blur_amount: 0, transparency: 1, state_color: true, ...config };
-    if (!this.shadowRoot) { this.attachShadow({mode:"open"}); this._render(); }
+    this._config = { ...config };
+    if (!this.shadowRoot) { 
+      this.attachShadow({mode:"open"}); 
+      this._render(); 
+    }
     this._update();
   }
 
@@ -242,38 +240,38 @@ class ElephantEntityCardEditor extends HTMLElement {
       </style>
 
       <div class="form">
-        <ha-entity-picker label="Entity" .value="${this._config.entity}" configValue="entity"></ha-entity-picker>
-        <ha-textfield label="Override Name" .value="${this._config.name || ''}" configValue="name"></ha-textfield>
-        <ha-textfield label="Override Unit" .value="${this._config.unit || ''}" configValue="unit"></ha-textfield>
-        <ha-icon-picker label="Icon" .value="${this._config.icon}" configValue="icon"></ha-icon-picker>
+        <ha-entity-picker label="Entity" configValue="entity"></ha-entity-picker>
+        <ha-textfield label="Friendly Name" configValue="name"></ha-textfield>
+        <ha-textfield label="Friendly Unit" configValue="unit"></ha-textfield>
+        <ha-icon-picker label="Icon" configValue="icon"></ha-icon-picker>
 
         <div class="row">
           <div class="color-item">
             <span class="color-label">Background</span>
-            <input type="color" configValue="background_color" value="${this._config.background_color || '#ffffff'}">
+            <input type="color" configValue="background_color">
           </div>
           <div class="color-item">
             <span class="color-label">Text</span>
-            <input type="color" configValue="text_color" value="${this._config.text_color || '#ffffff'}">
+            <input type="color" configValue="text_color">
           </div>
           <div class="color-item">
             <span class="color-label">Icon</span>
-            <input type="color" configValue="icon_color" value="${this._config.icon_color || '#ffffff'}">
+            <input type="color" configValue="icon_color">
           </div>
         </div>
 
         <div>
           <div class="label">Blur (<span id="blurVal"></span>px)</div>
-          <ha-slider min="0" max="30" step="1" pin .value="${this._config.blur_amount}" configValue="blur_amount"></ha-slider>
+          <ha-slider min="0" max="30" step="1" pin configValue="blur_amount"></ha-slider>
         </div>
 
         <div>
           <div class="label">Transparency (<span id="transVal"></span>%)</div>
-          <ha-slider min="0" max="1" step="0.05" pin .value="${this._config.transparency}" configValue="transparency"></ha-slider>
+          <ha-slider min="0" max="1" step="0.05" pin configValue="transparency"></ha-slider>
         </div>
 
         <ha-formfield label="Enable State-Based Icon Coloring">
-          <ha-switch .checked="${this._config.state_color}" configValue="state_color"></ha-switch>
+          <ha-switch configValue="state_color"></ha-switch>
         </ha-formfield>
       </div>
     `;
@@ -282,18 +280,26 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   _attachListeners() {
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
-      const key = el.getAttribute("configValue");
-
+      // For Home Assistant text and picker elements
       el.addEventListener("value-changed", ev => {
-          this._valueChanged(key, ev.detail.value);
+        const key = el.getAttribute("configValue");
+        this._valueChanged(key, ev.detail.value);
       });
 
-      if (el.tagName === "HA-SWITCH") {
-          el.addEventListener("change", ev => this._valueChanged(key, ev.target.checked));
-      }
-      
+      // For the custom color inputs
       if (el.tagName === "INPUT") {
-          el.addEventListener("input", ev => this._valueChanged(key, ev.target.value));
+        el.addEventListener("input", ev => {
+          const key = el.getAttribute("configValue");
+          this._valueChanged(key, ev.target.value);
+        });
+      }
+
+      // For the switch
+      if (el.tagName === "HA-SWITCH") {
+        el.addEventListener("change", ev => {
+          const key = el.getAttribute("configValue");
+          this._valueChanged(key, ev.target.checked);
+        });
       }
     });
   }
@@ -304,14 +310,18 @@ class ElephantEntityCardEditor extends HTMLElement {
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
       const key = el.getAttribute("configValue");
       const val = this._config[key];
-      if (val === undefined) return;
 
-      if (el.tagName === "HA-SWITCH") el.checked = val;
-      else if (el.tagName !== "INPUT") el.value = val;
+      if (el.tagName === "HA-SWITCH") {
+        el.checked = val !== undefined ? val : true;
+      } else if (el.tagName === "INPUT") {
+        el.value = val || "#ffffff";
+      } else {
+        el.value = val || "";
+      }
     });
 
-    this.shadowRoot.getElementById("blurVal").textContent = this._config.blur_amount;
-    this.shadowRoot.getElementById("transVal").textContent = Math.round(this._config.transparency*100);
+    this.shadowRoot.getElementById("blurVal").textContent = this._config.blur_amount || 0;
+    this.shadowRoot.getElementById("transVal").textContent = Math.round((this._config.transparency || 1) * 100);
 
     const picker = this.shadowRoot.querySelector("ha-entity-picker");
     if (picker && this._hass) picker.hass = this._hass;
@@ -319,13 +329,14 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   _valueChanged(key, value) {
     let newValue = value;
-    if (["blur_amount","transparency"].includes(key)) newValue = parseFloat(value);
+    if (["blur_amount", "transparency"].includes(key)) newValue = parseFloat(value);
     
     const newConfig = { ...this._config, [key]: newValue };
 
     this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: newConfig },
-      bubbles:true, composed:true
+      bubbles: true, 
+      composed: true
     }));
   }
 }
