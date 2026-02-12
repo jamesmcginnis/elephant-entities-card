@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Exact Tile Card Dimensions */
+/* 🐘 Elephant Entity Card - Auto-Formatting Name Logic */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -39,6 +39,17 @@ class ElephantEntityCard extends HTMLElement {
     this._render();
   }
 
+  // Logic to clean and capitalize entity names
+  _formatName(name) {
+    return name
+      .split(/[\._]/) // Split by dot or underscore
+      .pop()           // Take the last part (remove domain)
+      .replace(/_/g, ' ') // Replace remaining underscores with spaces
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+
   _processColor(color) {
     if (!color) return null;
     if (Array.isArray(color)) return `rgb(${color.join(',')})`;
@@ -68,7 +79,11 @@ class ElephantEntityCard extends HTMLElement {
     if (!stateObj) return;
 
     const isActive = ["on", "open", "playing", "home"].includes(stateObj.state);
-    const displayName = this._config.name || stateObj.attributes.friendly_name || this._config.entity;
+    
+    // Name Logic: Custom Config -> Friendly Name -> Formatted Entity ID
+    const rawName = this._config.name || stateObj.attributes.friendly_name || this._config.entity;
+    const displayName = rawName.includes('_') ? this._formatName(rawName) : rawName;
+
     const unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:help-circle";
 
@@ -85,7 +100,7 @@ class ElephantEntityCard extends HTMLElement {
             display: flex;
             align-items: center;
             gap: 12px;
-            height: 56px; /* Exact HA Tile Height */
+            height: 56px;
             cursor: pointer;
             transition: all 0.2s ease;
             overflow: hidden;
@@ -280,6 +295,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile-sized card with auto-filling defaults",
+  description: "Standard Tile-size with auto-formatting names",
   preview: true
 });
