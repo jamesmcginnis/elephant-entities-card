@@ -3,7 +3,7 @@
 class ElephantEntityCard extends HTMLElement {
 
   setConfig(config) {
-    // Allow empty entity in editor preview — only throw if the key is missing entirely
+    // Changed from !config.entity so an empty string "" (editor default) doesn't throw
     if (config.entity === undefined) throw new Error("Entity is required");
 
     this.config = {
@@ -127,7 +127,7 @@ class ElephantEntityCard extends HTMLElement {
   }
 
   _update() {
-    if (!this._hass || !this.shadowRoot) return;
+    if (!this._hass) return;
 
     const stateObj = this._hass.states[this.config.entity];
     if (!stateObj) return;
@@ -135,6 +135,7 @@ class ElephantEntityCard extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     const icon = this.shadowRoot.querySelector("ha-icon");
 
+    const domain = stateObj.entity_id.split(".")[0];
     const isActive = ["on", "open", "playing", "home"].includes(stateObj.state);
 
     icon.setAttribute(
@@ -142,7 +143,6 @@ class ElephantEntityCard extends HTMLElement {
       this.config.icon || stateObj.attributes.icon || "mdi:help-circle"
     );
 
-    // Icon colour: state_color takes priority, then icon_color, then clear
     if (this.config.state_color) {
       icon.style.color = isActive
         ? "var(--state-active-color)"
@@ -153,46 +153,40 @@ class ElephantEntityCard extends HTMLElement {
       icon.style.color = "";
     }
 
-    // Background colour + transparency (transparency only meaningful with a colour set)
     if (this.config.background_color) {
       const rgb = this._hexToRgb(this.config.background_color);
-      const alpha = this.config.transparency !== undefined ? this.config.transparency : 1;
-      card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+      card.style.background =
+        `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.config.transparency})`;
+
+      if (this.config.blur_amount > 0) {
+        card.style.backdropFilter = `blur(${this.config.blur_amount}px)`;
+        card.style.webkitBackdropFilter = `blur(${this.config.blur_amount}px)`;
+      } else {
+        card.style.backdropFilter = "";
+        card.style.webkitBackdropFilter = "";
+      }
     } else {
       card.style.background = "";
     }
 
-    // Blur applies independently — does not require a background colour
-    if (this.config.blur_amount > 0) {
-      card.style.backdropFilter = `blur(${this.config.blur_amount}px)`;
-      card.style.webkitBackdropFilter = `blur(${this.config.blur_amount}px)`;
-    } else {
-      card.style.backdropFilter = "";
-      card.style.webkitBackdropFilter = "";
-    }
-
     card.style.color = this.config.text_color || "";
 
-    // Friendly Name: use config override, else entity friendly_name, else entity id
+    // Friendly Name logic
     this.shadowRoot.querySelector(".primary").textContent =
-      this.config.name
-        ? this.config.name
-        : (stateObj.attributes.friendly_name || this.config.entity);
+      this.config.name ? this.config.name : (stateObj.attributes.friendly_name || this.config.entity);
 
-    // Friendly Unit: use config override, else entity unit_of_measurement, else nothing
-    const unit = this.config.unit
-      ? this.config.unit
-      : (stateObj.attributes.unit_of_measurement || "");
+    // Friendly Unit logic
+    const unit = this.config.unit ? this.config.unit : (stateObj.attributes.unit_of_measurement || "");
 
     this.shadowRoot.querySelector(".secondary").textContent =
-      `${stateObj.state}${unit ? " " + unit : ""}`.trim();
+      `${stateObj.state}${unit ? ' ' + unit : ''}`.trim();
   }
 
   _hexToRgb(hex) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
-      ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
-      : { r: 255, g: 255, b: 255 };
+      ? { r: parseInt(result[1],16), g: parseInt(result[2],16), b: parseInt(result[3],16) }
+      : { r:255,g:255,b:255 };
   }
 
   getCardSize() { return 1; }
@@ -208,7 +202,6 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    // Always push the live hass object directly onto the picker as a JS property
     if (this.shadowRoot) {
       const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
       if (entityPicker) entityPicker.hass = hass;
@@ -227,11 +220,11 @@ class ElephantEntityCardEditor extends HTMLElement {
   _render() {
     this.shadowRoot.innerHTML = `
       <style>
-        .form { display: flex; flex-direction: column; gap: 16px; padding: 12px; }
-        .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+        .form { display: flex; flex-direction: column; gap:16px; padding:12px; }
+        .row { display:flex; gap:12px; align-items: center; justify-content: space-between; }
         .color-item { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
-        input[type="color"] { width: 100%; height: 30px; border: none; background: none; cursor: pointer; }
-        .label { font-size: 0.9rem; font-weight: 500; color: var(--secondary-text-color); }
+        input[type="color"] { width:100%; height:30px; border:none; background:none; cursor:pointer; }
+        .label { font-size:0.9rem; font-weight:500; color: var(--secondary-text-color); }
         .color-label { font-size: 0.75rem; }
       </style>
 
@@ -272,80 +265,42 @@ class ElephantEntityCardEditor extends HTMLElement {
       </div>
     `;
 
-    // ha-entity-picker: hass and value MUST be set as JS properties after render,
-    // never as HTML attributes — complex objects get stringified otherwise.
-    // setTimeout(0) lets the custom element fully upgrade before we assign.
-    setTimeout(() => {
-      const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
-      if (entityPicker) {
-        if (this._hass) entityPicker.hass = this._hass;
-        entityPicker.value = this._config ? (this._config.entity || "") : "";
-      }
-    }, 0);
+    // Assign hass and value as JS properties after render — not via HTML attributes
+    const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
+    if (this._hass) entityPicker.hass = this._hass;
+    if (this._config) entityPicker.value = this._config.entity || "";
 
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
-      el.addEventListener("value-changed", ev => {
-        this._valueChanged(el.getAttribute("configValue"), ev.detail.value);
-      });
+      el.addEventListener("value-changed", ev => this._valueChanged(el.getAttribute("configValue"), ev.detail.value));
 
       if (el.tagName === "INPUT") {
-        el.addEventListener("input", ev => {
-          this._valueChanged(el.getAttribute("configValue"), ev.target.value);
-        });
+        el.addEventListener("input", ev => this._valueChanged(el.getAttribute("configValue"), ev.target.value));
       }
 
       if (el.tagName === "HA-SWITCH") {
-        el.addEventListener("change", ev => {
-          this._valueChanged(el.getAttribute("configValue"), ev.target.checked);
-        });
+        el.addEventListener("change", ev => this._valueChanged(el.getAttribute("configValue"), ev.target.checked));
       }
     });
   }
 
   _updateDisplay() {
-    if (!this._config || !this.shadowRoot) return;
+    if (!this._config) return;
 
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
       const key = el.getAttribute("configValue");
       const value = this._config[key];
 
-      switch (el.tagName) {
-        case "HA-ENTITY-PICKER":
-          // JS property only — never setAttribute
-          el.value = value || "";
-          if (this._hass) el.hass = this._hass;
-          break;
-
-        case "HA-SWITCH":
-          el.checked = value !== undefined ? value : true;
-          break;
-
-        case "HA-TEXTFIELD":
-          el.value = value || "";
-          break;
-
-        case "HA-ICON-PICKER":
-          el.value = value || "";
-          break;
-
-        case "HA-SLIDER":
-          el.value = value !== undefined ? value : (el.getAttribute("min") || 0);
-          break;
-
-        case "INPUT":
-          // colour inputs: keep #ffffff as a safe default
-          el.value = value || "#ffffff";
-          break;
-
-        default:
-          el.value = value || "";
+      if (el.tagName === "HA-SWITCH") {
+        el.checked = value !== undefined ? value : true;
+      } else if (el.tagName === "INPUT") {
+        el.value = value || "#ffffff";
+      } else {
+        el.value = value || "";
       }
     });
 
-    this.shadowRoot.getElementById("blurVal").textContent =
-      this._config.blur_amount || 0;
-    this.shadowRoot.getElementById("transVal").textContent =
-      Math.round((this._config.transparency !== undefined ? this._config.transparency : 1) * 100);
+    this.shadowRoot.getElementById("blurVal").textContent = this._config.blur_amount || 0;
+    this.shadowRoot.getElementById("transVal").textContent = Math.round((this._config.transparency || 1) * 100);
   }
 
   _valueChanged(key, value) {
@@ -359,7 +314,7 @@ class ElephantEntityCardEditor extends HTMLElement {
     this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: newConfig },
       bubbles: true,
-      composed: true,
+      composed: true
     }));
   }
 }
