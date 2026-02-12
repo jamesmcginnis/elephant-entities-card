@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Complete Updated File */
+/* 🐘 Elephant Entity Card - Color Fixed Version */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -17,9 +17,9 @@ class ElephantEntityCard extends HTMLElement {
       name: "",
       unit: "",
       icon: "",
-      background_color: "#ffffff",
-      text_color: "#ffffff",
-      icon_color: "#ffffff",
+      background_color: [255, 255, 255],
+      text_color: [255, 255, 255],
+      icon_color: [255, 255, 255],
       blur_amount: 0,
       transparency: 1,
       state_color: true
@@ -36,6 +36,23 @@ class ElephantEntityCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._render();
+  }
+
+  // Helper to handle both Hex strings and RGB arrays
+  _processColor(color) {
+    if (!color) return null;
+    if (Array.isArray(color)) return `rgb(${color.join(',')})`;
+    return color;
+  }
+
+  _getRGBValues(color) {
+    if (Array.isArray(color)) return { r: color[0], g: color[1], b: color[2] };
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color || "#ffffff");
+    return result ? { 
+      r: parseInt(result[1], 16), 
+      g: parseInt(result[2], 16), 
+      b: parseInt(result[3], 16) 
+    } : { r: 255, g: 255, b: 255 };
   }
 
   _render() {
@@ -64,6 +81,7 @@ class ElephantEntityCard extends HTMLElement {
             transition: 0.2s ease;
             overflow: hidden;
             position: relative;
+            border-radius: var(--ha-card-border-radius, 12px);
           }
           ha-card:active { transform: scale(0.98); }
           ha-icon { --mdc-icon-size: 32px; }
@@ -77,7 +95,7 @@ class ElephantEntityCard extends HTMLElement {
           }
           .secondary {
             font-size: 0.875rem;
-            color: var(--secondary-text-color);
+            opacity: 0.7;
           }
         </style>
         <ha-card>
@@ -95,25 +113,24 @@ class ElephantEntityCard extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
 
-    // Colors & Glass Effect
+    // Background & Glass Effect
     if (this._config.background_color) {
-      const rgb = this._hexToRgb(this._config.background_color);
-      card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency || 1})`;
+      const rgb = this._getRGBValues(this._config.background_color);
+      card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
       card.style.backdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
       card.style.webkitBackdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
     }
 
-    card.style.color = this._config.text_color || "";
+    // Text & Icon Colors
+    card.style.color = this._processColor(this._config.text_color) || "";
     
-    // Icon Logic
     iconEl.icon = icon;
     if (this._config.state_color) {
       iconEl.style.color = isActive ? "var(--state-active-color)" : "var(--disabled-text-color)";
     } else {
-      iconEl.style.color = this._config.icon_color || "";
+      iconEl.style.color = this._processColor(this._config.icon_color) || "";
     }
 
-    // Content
     this.shadowRoot.querySelector(".primary").textContent = displayName;
     this.shadowRoot.querySelector(".secondary").textContent = `${stateObj.state} ${unit}`.trim();
   }
@@ -126,16 +143,11 @@ class ElephantEntityCard extends HTMLElement {
     });
     this.dispatchEvent(event);
   }
-
-  _hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 255, g: 255, b: 255 };
-  }
 }
 
 customElements.define("elephant-entity-card", ElephantEntityCard);
 
-/* ===================== EDITOR (Using ha-form logic) ===================== */
+/* ===================== EDITOR ===================== */
 
 class ElephantEntityCardEditor extends HTMLElement {
   constructor() {
@@ -160,7 +172,6 @@ class ElephantEntityCardEditor extends HTMLElement {
       this.innerHTML = `
         <style>
           .field-wrapper { margin-bottom: 16px; }
-          .field-label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 14px; }
         </style>
         <div id="editor-container"></div>
       `;
@@ -192,7 +203,6 @@ class ElephantEntityCardEditor extends HTMLElement {
       
       this._form.addEventListener("value-changed", (ev) => {
         const config = { ...this._config, ...ev.detail.value };
-        // Ensure the type is preserved
         config.type = "custom:elephant-entity-card";
         
         this.dispatchEvent(new CustomEvent("config-changed", {
