@@ -177,8 +177,6 @@ class ElephantEntityCard extends HTMLElement {
 
     card.style.color = this.config.text_color || "";
 
-    // FIX: Use trim() to treat whitespace-only strings as empty, ensuring
-    // the override is only applied when a non-empty name/unit is configured.
     const nameOverride = (this.config.name || "").trim();
     this.shadowRoot.querySelector(".primary").textContent =
       nameOverride
@@ -220,7 +218,6 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    // FIX: Always keep the entity picker's hass reference up to date.
     if (this.shadowRoot) {
       const picker = this.shadowRoot.querySelector("ha-entity-picker");
       if (picker) picker.hass = hass;
@@ -251,6 +248,7 @@ class ElephantEntityCardEditor extends HTMLElement {
         <ha-entity-picker
           label="Entity"
           allow-custom-entity
+          configValue="entity"
         ></ha-entity-picker>
 
         <ha-textfield label="Friendly Name" data-key="name"></ha-textfield>
@@ -292,34 +290,19 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 
   _attachListeners() {
-    // FIX: Entity picker is handled separately since it doesn't use data-key.
     const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
     entityPicker.addEventListener("value-changed", (ev) => {
-      // Prevent the event bubbling up and being misinterpreted.
       ev.stopPropagation();
       this._fireConfigChanged("entity", ev.detail.value);
     });
 
-    // FIX: Use data-key instead of configValue to avoid HA's own attribute
-    // handling from interfering, and handle each element type explicitly.
     this.shadowRoot.querySelectorAll("[data-key]").forEach((el) => {
       const key = el.dataset.key;
 
-      if (el.tagName === "HA-TEXTFIELD") {
-        // ha-textfield fires "value-changed" with ev.detail.value (a string).
+      if (el.tagName === "HA-TEXTFIELD" || el.tagName === "HA-ICON-PICKER" || el.tagName === "HA-SLIDER") {
         el.addEventListener("value-changed", (ev) => {
           ev.stopPropagation();
-          this._fireConfigChanged(key, ev.detail.value);
-        });
-      } else if (el.tagName === "HA-ICON-PICKER") {
-        el.addEventListener("value-changed", (ev) => {
-          ev.stopPropagation();
-          this._fireConfigChanged(key, ev.detail.value);
-        });
-      } else if (el.tagName === "HA-SLIDER") {
-        el.addEventListener("value-changed", (ev) => {
-          ev.stopPropagation();
-          this._fireConfigChanged(key, parseFloat(ev.detail.value));
+          this._fireConfigChanged(key, el.tagName === "HA-SLIDER" ? parseFloat(ev.detail.value) : ev.detail.value);
         });
       } else if (el.tagName === "HA-SWITCH") {
         el.addEventListener("change", (ev) => {
@@ -336,7 +319,6 @@ class ElephantEntityCardEditor extends HTMLElement {
   _update() {
     if (!this._config || !this.shadowRoot) return;
 
-    // FIX: Set entity picker value directly (it's not in the data-key loop).
     const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
     if (entityPicker) {
       if (this._hass) entityPicker.hass = this._hass;
@@ -348,19 +330,14 @@ class ElephantEntityCardEditor extends HTMLElement {
       const val = this._config[key];
 
       if (el.tagName === "HA-SWITCH") {
-        // FIX: Default state_color to true if not explicitly set.
         el.checked = val !== undefined ? val : true;
       } else if (el.tagName === "INPUT" && el.type === "color") {
         el.value = val || "#ffffff";
       } else {
-        // Covers ha-textfield, ha-icon-picker, ha-slider.
-        // FIX: Explicitly set to empty string rather than using || "" 
-        // so that a saved empty name doesn't fall back to a stale value.
         el.value = val !== undefined && val !== null ? String(val) : "";
       }
     });
 
-    // Update slider readout labels.
     this.shadowRoot.getElementById("blurVal").textContent =
       this._config.blur_amount || 0;
     this.shadowRoot.getElementById("transVal").textContent =
@@ -371,7 +348,6 @@ class ElephantEntityCardEditor extends HTMLElement {
     const newConfig = { ...this._config, [key]: value };
     this._config = newConfig;
 
-    // Re-render the slider labels if they changed.
     if (key === "blur_amount") {
       this.shadowRoot.getElementById("blurVal").textContent = value;
     }
