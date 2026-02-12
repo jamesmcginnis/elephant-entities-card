@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Standard Size Update */
+/* 🐘 Elephant Entity Card - Visual Editor Fine-Tuned */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -23,7 +23,7 @@ class ElephantEntityCard extends HTMLElement {
       blur_amount: 0,
       transparency: 1,
       state_color: true,
-      decimals: 1
+      decimals: 2
     };
   }
 
@@ -82,7 +82,7 @@ class ElephantEntityCard extends HTMLElement {
             display: flex;
             align-items: center;
             gap: 12px;
-            min-height: 66px; /* Standard Home Assistant Tile Height */
+            min-height: 66px;
             cursor: pointer;
             transition: 0.2s ease;
             overflow: hidden;
@@ -207,30 +207,34 @@ class ElephantEntityCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement("ha-form");
       this._form.schema = [
-        { name: "entity", selector: { entity: {} } },
-        { name: "name", label: "Override Name", selector: { text: {} } },
-        { name: "unit", label: "Override Unit", selector: { text: {} } },
+        { name: "entity", label: "Select Entity", selector: { entity: {} } },
+        { name: "name", label: "Friendly Name", selector: { text: {} } },
+        { name: "unit", label: "Friendly Unit", selector: { text: {} } },
         { name: "decimals", label: "Decimal Places", selector: { number: { min: 0, max: 5, mode: "box" } } },
-        { name: "icon", selector: { icon: {} } },
+        { name: "icon", label: "Icon (Leave blank for default)", selector: { icon: {} } },
         {
           type: "grid",
           name: "",
           column_min_width: "100px",
           schema: [
-            { name: "background_color", label: "Background", selector: { color_rgb: {} } },
-            { name: "text_color", label: "Text Color", selector: { color_rgb: {} } },
-            { name: "icon_color", label: "Icon Color", selector: { color_rgb: {} } },
+            { name: "background_color", label: "Choose Background Colour", selector: { color_rgb: {} } },
+            { name: "text_color", label: "Choose Text Colour", selector: { color_rgb: {} } },
+            { name: "icon_color", label: "Choose Icon Colour", selector: { color_rgb: {} } },
           ]
         },
-        { name: "blur_amount", label: "Blur Amount", selector: { number: { min: 0, max: 30, mode: "slider" } } },
-        { name: "transparency", label: "Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
-        { name: "state_color", label: "Use State Colors for Icon", selector: { boolean: {} } }
+        { name: "transparency", label: "Choose Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
+        { name: "state_color", label: "Turn off Custom Icon Colour", selector: { boolean: {} } }
       ];
       
       this._form.addEventListener("value-changed", (ev) => {
         const config = { ...this._config, ...ev.detail.value };
         config.type = "custom:elephant-entity-card";
         
+        // Use default entity icon if user clears the icon field
+        if (!config.icon && config.entity && this._hass.states[config.entity]) {
+            config.icon = this._hass.states[config.entity].attributes.icon || "";
+        }
+
         this.dispatchEvent(new CustomEvent("config-changed", {
           detail: { config },
           bubbles: true,
