@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - State & Name Auto-Formatting */
+/* 🐘 Elephant Entity Card - Robust Capitalization & Auto-Icon Fix */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -39,12 +39,19 @@ class ElephantEntityCard extends HTMLElement {
     this._render();
   }
 
-  // Logic to replace underscores with spaces and capitalize words
-  _formatString(str) {
+  // Improved Logic: Strips domain, replaces underscores, and forces Title Case
+  _formatString(str, isEntityId = false) {
     if (!str) return "";
-    return str
+    
+    let workingString = str;
+    if (isEntityId && workingString.includes('.')) {
+      workingString = workingString.split('.').pop();
+    }
+
+    return workingString
       .replace(/_/g, ' ')
-      .split(' ')
+      .trim()
+      .split(/\s+/)
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
   }
@@ -70,7 +77,7 @@ class ElephantEntityCard extends HTMLElement {
 
   _render() {
     if (!this._hass || !this._config?.entity) {
-      this.shadowRoot.innerHTML = `<div style="padding:12px;background:var(--ha-card-background, #fff);color:var(--primary-text-color);border-radius:var(--ha-card-border-radius, 12px);height:56px;display:flex;align-items:center;">Select an entity</div>`;
+      this.shadowRoot.innerHTML = `<div style="padding:12px;background:var(--ha-card-background, #fff);color:var(--primary-text-color);border-radius:var(--ha-card-border-radius, 12px);height:56px;display:flex;align-items:center;font-family:sans-serif;">Select an entity</div>`;
       return;
     }
 
@@ -79,16 +86,21 @@ class ElephantEntityCard extends HTMLElement {
 
     const isActive = ["on", "open", "playing", "home"].includes(stateObj.state);
     
-    // Format Name
-    const rawName = this._config.name || stateObj.attributes.friendly_name || this._config.entity.split('.').pop();
-    const displayName = this._formatString(rawName);
+    // Name Logic: Custom -> Friendly Name -> Formatted Entity ID
+    let displayName;
+    if (this._config.name) {
+      displayName = this._formatString(this._config.name);
+    } else if (stateObj.attributes.friendly_name) {
+      displayName = this._formatString(stateObj.attributes.friendly_name);
+    } else {
+      displayName = this._formatString(this._config.entity, true);
+    }
 
-    // Format State
+    // State Logic
     let displayState = stateObj.state;
     if (this._config.decimals !== undefined && !isNaN(parseFloat(displayState)) && isFinite(displayState)) {
       displayState = parseFloat(displayState).toFixed(this._config.decimals);
     } else {
-      // If it's text (like 'away' or 'plugged_in'), format it
       displayState = this._formatString(displayState);
     }
 
@@ -289,6 +301,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Standard tile card with auto-capitalized state and names",
+  description: "Standard tile card with robust Title Case formatting",
   preview: true
 });
