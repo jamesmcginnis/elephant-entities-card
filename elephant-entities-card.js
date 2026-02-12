@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Auto-Populating Editor */
+/* 🐘 Elephant Entity Card - Standard HA Defaults & Label Fine-Tuning */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -17,9 +17,9 @@ class ElephantEntityCard extends HTMLElement {
       name: "",
       unit: "",
       icon: "",
-      background_color: [255, 255, 255],
-      text_color: [255, 255, 255],
-      icon_color: [255, 255, 255],
+      background_color: null,
+      text_color: null,
+      icon_color: null,
       blur_amount: 0,
       transparency: 1,
       state_color: true,
@@ -47,12 +47,16 @@ class ElephantEntityCard extends HTMLElement {
 
   _getRGBValues(color) {
     if (Array.isArray(color)) return { r: color[0], g: color[1], b: color[2] };
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color || "#ffffff");
-    return result ? { 
-      r: parseInt(result[1], 16), 
-      g: parseInt(result[2], 16), 
-      b: parseInt(result[3], 16) 
-    } : { r: 255, g: 255, b: 255 };
+    if (typeof color === 'string' && color.startsWith('#')) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
+      return result ? { 
+        r: parseInt(result[1], 16), 
+        g: parseInt(result[2], 16), 
+        b: parseInt(result[3], 16) 
+      } : { r: 255, g: 255, b: 255 };
+    }
+    // Default to White if no color is provided (Standard HA Card Default)
+    return { r: 255, g: 255, b: 255 };
   }
 
   _render() {
@@ -89,6 +93,8 @@ class ElephantEntityCard extends HTMLElement {
             position: relative;
             box-sizing: border-box;
             border-radius: var(--ha-card-border-radius, 12px);
+            background: var(--ha-card-background, var(--card-background-color, white));
+            color: var(--primary-text-color);
           }
           ha-card:active { transform: scale(0.98); }
           ha-icon { 
@@ -98,7 +104,7 @@ class ElephantEntityCard extends HTMLElement {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(var(--rgb, 255, 255, 255), 0.1);
+            background: rgba(var(--icon-rgb, 120, 120, 120), 0.1);
             border-radius: 50%;
             flex-shrink: 0;
           }
@@ -115,13 +121,11 @@ class ElephantEntityCard extends HTMLElement {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            color: inherit;
           }
           .secondary {
             font-size: 12px;
             line-height: 16px;
             opacity: 0.7;
-            color: inherit;
           }
         </style>
         <ha-card>
@@ -138,16 +142,23 @@ class ElephantEntityCard extends HTMLElement {
 
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
-    const rgb = this._getRGBValues(this._config.background_color);
 
+    // Background & Transparency
     if (this._config.background_color) {
+      const rgb = this._getRGBValues(this._config.background_color);
       card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
-      card.style.backdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
-      card.style.webkitBackdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
-      card.style.setProperty('--rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+      card.style.setProperty('--icon-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+    } else {
+      // Fallback to HA Default with transparency support
+      card.style.backgroundColor = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency ?? 1})`;
     }
 
-    card.style.color = this._processColor(this._config.text_color) || "";
+    // Blur support (kept in code as requested, but removed from UI)
+    card.style.backdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
+    card.style.webkitBackdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
+
+    // Text & Icon Color
+    if (this._config.text_color) card.style.color = this._processColor(this._config.text_color);
     
     iconEl.icon = icon;
     if (this._config.state_color) {
@@ -194,12 +205,7 @@ class ElephantEntityCardEditor extends HTMLElement {
     if (!this._hass || !this._config) return;
 
     if (!this._initialized) {
-      this.innerHTML = `
-        <style>
-          .field-wrapper { margin-bottom: 16px; }
-        </style>
-        <div id="editor-container"></div>
-      `;
+      this.innerHTML = `<div id="editor-container"></div>`;
       this._initialized = true;
     }
 
@@ -217,9 +223,9 @@ class ElephantEntityCardEditor extends HTMLElement {
           name: "",
           column_min_width: "100px",
           schema: [
-            { name: "background_color", label: "Card Background Colour", selector: { color_rgb: {} } },
-            { name: "text_color", label: "Main Text Colour", selector: { color_rgb: {} } },
-            { name: "icon_color", label: "Icon Colour", selector: { color_rgb: {} } },
+            { name: "background_color", label: "Choose Background Colour", selector: { color_rgb: {} } },
+            { name: "text_color", label: "Choose Text Colour", selector: { color_rgb: {} } },
+            { name: "icon_color", label: "Choose Icon Colour", selector: { color_rgb: {} } },
           ]
         },
         { name: "transparency", label: "Choose Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
@@ -231,14 +237,11 @@ class ElephantEntityCardEditor extends HTMLElement {
         const config = { ...this._config, ...newValue };
         config.type = "custom:elephant-entity-card";
         
-        // Auto-populate defaults when an entity is first selected
+        // Auto-populate icon picker with default entity icon
         if (newValue.entity && newValue.entity !== this._config.entity) {
           const stateObj = this._hass.states[newValue.entity];
-          if (stateObj) {
-            if (!config.icon) config.icon = stateObj.attributes.icon || "";
-            if (!config.background_color) config.background_color = [255, 255, 255];
-            if (!config.text_color) config.text_color = [255, 255, 255];
-            if (!config.icon_color) config.icon_color = [255, 255, 255];
+          if (stateObj && !config.icon) {
+            config.icon = stateObj.attributes.icon || "";
           }
         }
 
@@ -262,6 +265,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Auto-populating glass card with custom overrides",
+  description: "Standard glass card with auto-icon and HA default colours",
   preview: true
 });
