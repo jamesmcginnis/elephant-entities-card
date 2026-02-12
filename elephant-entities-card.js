@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Robust Capitalization & Auto-Icon Fix */
+/* 🐘 Elephant Entity Card - Lock, Door, and Binary State Logic */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -39,15 +39,12 @@ class ElephantEntityCard extends HTMLElement {
     this._render();
   }
 
-  // Improved Logic: Strips domain, replaces underscores, and forces Title Case
   _formatString(str, isEntityId = false) {
     if (!str) return "";
-    
     let workingString = str;
     if (isEntityId && workingString.includes('.')) {
       workingString = workingString.split('.').pop();
     }
-
     return workingString
       .replace(/_/g, ' ')
       .trim()
@@ -84,9 +81,9 @@ class ElephantEntityCard extends HTMLElement {
     const stateObj = this._hass.states[this._config.entity];
     if (!stateObj) return;
 
-    const isActive = ["on", "open", "playing", "home"].includes(stateObj.state);
+    const isActive = ["on", "open", "playing", "home", "locked"].includes(stateObj.state);
     
-    // Name Logic: Custom -> Friendly Name -> Formatted Entity ID
+    // Name Logic
     let displayName;
     if (this._config.name) {
       displayName = this._formatString(this._config.name);
@@ -96,9 +93,20 @@ class ElephantEntityCard extends HTMLElement {
       displayName = this._formatString(this._config.entity, true);
     }
 
-    // State Logic
+    // State Logic (Lock and Binary Sensor Handling)
     let displayState = stateObj.state;
-    if (this._config.decimals !== undefined && !isNaN(parseFloat(displayState)) && isFinite(displayState)) {
+    const domain = this._config.entity.split('.')[0];
+
+    if (domain === "lock") {
+      displayState = (displayState === "locked") ? "Locked" : "Unlocked";
+    } else if (domain === "binary_sensor") {
+      const deviceClass = stateObj.attributes.device_class;
+      if (["door", "window", "opening", "garage_door"].includes(deviceClass)) {
+        displayState = (displayState === "on") ? "Open" : "Closed";
+      } else {
+        displayState = (displayState === "on") ? "Detected" : "Clear";
+      }
+    } else if (this._config.decimals !== undefined && !isNaN(parseFloat(displayState)) && isFinite(displayState)) {
       displayState = parseFloat(displayState).toFixed(this._config.decimals);
     } else {
       displayState = this._formatString(displayState);
@@ -193,10 +201,12 @@ class ElephantEntityCard extends HTMLElement {
     }
 
     iconEl.icon = icon;
-    if (this._config.state_color) {
+    
+    if (this._config.state_color === true) {
       iconEl.style.color = isActive ? "var(--state-active-color)" : "var(--disabled-text-color)";
     } else {
-      iconEl.style.color = this._processColor(this._config.icon_color) || "";
+      const customIconCol = this._processColor(this._config.icon_color);
+      iconEl.style.color = customIconCol || "inherit";
     }
 
     this.shadowRoot.querySelector(".primary").textContent = displayName;
@@ -301,6 +311,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Standard tile card with robust Title Case formatting",
+  description: "Tile card with support for Locked/Unlocked and binary states",
   preview: true
 });
