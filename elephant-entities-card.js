@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Lock, Door, and Binary State Logic */
+/* 🐘 Elephant Entity Card - Offline Icon Status & Logic */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -81,6 +81,7 @@ class ElephantEntityCard extends HTMLElement {
     const stateObj = this._hass.states[this._config.entity];
     if (!stateObj) return;
 
+    const isOffline = stateObj.state === "unavailable" || stateObj.state === "unknown";
     const isActive = ["on", "open", "playing", "home", "locked"].includes(stateObj.state);
     
     // Name Logic
@@ -93,11 +94,15 @@ class ElephantEntityCard extends HTMLElement {
       displayName = this._formatString(this._config.entity, true);
     }
 
-    // State Logic (Lock and Binary Sensor Handling)
+    // State Logic
     let displayState = stateObj.state;
     const domain = this._config.entity.split('.')[0];
+    let unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
 
-    if (domain === "lock") {
+    if (isOffline) {
+      displayState = "Offline";
+      unit = ""; 
+    } else if (domain === "lock") {
       displayState = (displayState === "locked") ? "Locked" : "Unlocked";
     } else if (domain === "binary_sensor") {
       const deviceClass = stateObj.attributes.device_class;
@@ -112,7 +117,6 @@ class ElephantEntityCard extends HTMLElement {
       displayState = this._formatString(displayState);
     }
 
-    const unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:help-circle";
 
     if (!this.shadowRoot.querySelector("ha-card")) {
@@ -202,7 +206,10 @@ class ElephantEntityCard extends HTMLElement {
 
     iconEl.icon = icon;
     
-    if (this._config.state_color === true) {
+    // Icon Color logic with Offline override
+    if (isOffline) {
+      iconEl.style.color = "var(--disabled-text-color)";
+    } else if (this._config.state_color === true) {
       iconEl.style.color = isActive ? "var(--state-active-color)" : "var(--disabled-text-color)";
     } else {
       const customIconCol = this._processColor(this._config.icon_color);
@@ -311,6 +318,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with support for Locked/Unlocked and binary states",
+  description: "Tile card with 'Offline' status and greyed icons for unavailable entities",
   preview: true
 });
