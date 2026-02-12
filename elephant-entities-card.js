@@ -206,8 +206,6 @@ class ElephantEntityCard extends HTMLElement {
   }
 }
 
-customElements.define("elephant-entity-card", ElephantEntityCard);
-
 
 /* 🐘 Visual Editor */
 
@@ -278,19 +276,23 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 }
 
-// Fixed the stray quote below
-customElements.define(
-  "elephant-entity-card-editor",
-  ElephantEntityCardEditor
-);
 
+/* 🔍 Fail-safe Registration (matching Crow card pattern) */
 
-/* 🔍 Discovery */
+if (!customElements.get("elephant-entity-card-editor")) {
+  customElements.define("elephant-entity-card-editor", ElephantEntityCardEditor);
+}
+
+if (!customElements.get("elephant-entity-card")) {
+  customElements.define("elephant-entity-card", ElephantEntityCard);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "elephant-entity-card",
-  name: "Elephant Entity Card",
-  preview: true,
-  description: "A standard-sized entity card with actions, toggle support and state coloring.",
-});
+if (!window.customCards.some(card => card.type === "elephant-entity-card")) {
+  window.customCards.push({
+    type: "elephant-entity-card",
+    name: "Elephant Entity Card",
+    preview: true,
+    description: "A standard-sized entity card with actions, toggle support and state coloring.",
+  });
+}
