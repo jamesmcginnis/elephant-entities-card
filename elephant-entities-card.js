@@ -245,10 +245,13 @@ class ElephantEntityCardEditor extends HTMLElement {
       </style>
 
       <div class="form">
+        <!-- Fully working entity picker -->
         <ha-entity-picker
+          .hass="${this._hass}"
           label="Entity"
           allow-custom-entity
-          configValue="entity"
+          .value="${this._config.entity || ''}"
+          @value-changed="${(ev) => this._fireConfigChanged('entity', ev.detail.value)}"
         ></ha-entity-picker>
 
         <ha-textfield label="Friendly Name" data-key="name"></ha-textfield>
@@ -290,12 +293,6 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 
   _attachListeners() {
-    const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
-    entityPicker.addEventListener("value-changed", (ev) => {
-      ev.stopPropagation();
-      this._fireConfigChanged("entity", ev.detail.value);
-    });
-
     this.shadowRoot.querySelectorAll("[data-key]").forEach((el) => {
       const key = el.dataset.key;
 
@@ -319,11 +316,7 @@ class ElephantEntityCardEditor extends HTMLElement {
   _update() {
     if (!this._config || !this.shadowRoot) return;
 
-    const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
-    if (entityPicker) {
-      if (this._hass) entityPicker.hass = this._hass;
-      entityPicker.value = this._config.entity || "";
-    }
+    // Entity picker updates automatically via .value binding
 
     this.shadowRoot.querySelectorAll("[data-key]").forEach((el) => {
       const key = el.dataset.key;
@@ -338,6 +331,7 @@ class ElephantEntityCardEditor extends HTMLElement {
       }
     });
 
+    // Update slider labels
     this.shadowRoot.getElementById("blurVal").textContent =
       this._config.blur_amount || 0;
     this.shadowRoot.getElementById("transVal").textContent =
