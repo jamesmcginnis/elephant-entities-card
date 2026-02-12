@@ -198,7 +198,7 @@ class ElephantEntityCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "sun.sun", state_color: true, icon: "mdi:elephant" };
+    return { entity: "", state_color: true, icon: "mdi:elephant" };
   }
 
   static getConfigElement() {
@@ -212,11 +212,9 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this.shadowRoot) {
-      const picker = this.shadowRoot.querySelector("ha-entity-picker");
-      if (picker) {
-        picker.hass = hass;
-      }
+    const picker = this.shadowRoot?.querySelector("ha-entity-picker");
+    if (picker) {
+      picker.hass = hass;
     }
   }
 
@@ -244,9 +242,6 @@ class ElephantEntityCardEditor extends HTMLElement {
         <ha-entity-picker 
           label="Entity" 
           configValue="entity"
-          .hass="${this._hass}"
-          .value="${this._config.entity || ''}"
-          allow-custom-entity
         ></ha-entity-picker>
         <ha-textfield label="Friendly Name" configValue="name"></ha-textfield>
         <ha-textfield label="Friendly Unit" configValue="unit"></ha-textfield>
@@ -289,7 +284,8 @@ class ElephantEntityCardEditor extends HTMLElement {
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
       el.addEventListener("value-changed", ev => {
         const key = el.getAttribute("configValue");
-        this._valueChanged(key, ev.detail.value);
+        const value = ev.detail.value;
+        this._valueChanged(key, value);
       });
 
       if (el.tagName === "INPUT") {
@@ -321,6 +317,7 @@ class ElephantEntityCardEditor extends HTMLElement {
         el.value = val || "#ffffff";
       } else if (el.tagName === "HA-ENTITY-PICKER") {
         el.value = val || "";
+        el.hass = this._hass;
       } else {
         el.value = val || "";
       }
@@ -328,12 +325,11 @@ class ElephantEntityCardEditor extends HTMLElement {
 
     this.shadowRoot.getElementById("blurVal").textContent = this._config.blur_amount || 0;
     this.shadowRoot.getElementById("transVal").textContent = Math.round((this._config.transparency || 1) * 100);
-
-    const picker = this.shadowRoot.querySelector("ha-entity-picker");
-    if (picker && this._hass) picker.hass = this._hass;
   }
 
   _valueChanged(key, value) {
+    if (!this._config || this._config[key] === value) return;
+    
     let newValue = value;
     if (["blur_amount", "transparency"].includes(key)) newValue = parseFloat(value);
     
