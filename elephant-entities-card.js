@@ -212,25 +212,20 @@ class ElephantEntityCard extends HTMLElement {
   }
 }
 
-/* 🐘 Visual Editor */
+/* 🐘 Visual Editor (HA-compatible) */
 
 class ElephantEntityCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this.shadowRoot) {
-      const picker = this.shadowRoot.querySelector("ha-entity-picker");
-      if (picker) picker.hass = hass;
-    }
   }
 
   setConfig(config) {
-    this._config = { ...config };
+    this._config = config || {};
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
       this._render();
     }
-    this._update();
   }
 
   _render() {
@@ -245,18 +240,15 @@ class ElephantEntityCardEditor extends HTMLElement {
       </style>
 
       <div class="form">
-        <!-- Fully working entity picker -->
         <ha-entity-picker
-          .hass="${this._hass}"
           label="Entity"
           allow-custom-entity
-          .value="${this._config.entity || ''}"
-          @value-changed="${(ev) => this._fireConfigChanged('entity', ev.detail.value)}"
+          configValue="entity"
         ></ha-entity-picker>
 
-        <ha-textfield label="Friendly Name" data-key="name"></ha-textfield>
-        <ha-textfield label="Friendly Unit" data-key="unit"></ha-textfield>
-        <ha-icon-picker label="Icon" data-key="icon"></ha-icon-picker>
+        <ha-textfield label="Friendly Name" configValue="name"></ha-textfield>
+        <ha-textfield label="Friendly Unit" configValue="unit"></ha-textfield>
+        <ha-icon-picker label="Icon" configValue="icon"></ha-icon-picker>
 
         <div class="row">
           <div class="color-item">
@@ -289,17 +281,13 @@ class ElephantEntityCardEditor extends HTMLElement {
       </div>
     `;
 
-    this._attachListeners();
-  }
-
-  _attachListeners() {
+    // Attach listeners only for sliders/colors
     this.shadowRoot.querySelectorAll("[data-key]").forEach((el) => {
       const key = el.dataset.key;
 
-      if (el.tagName === "HA-TEXTFIELD" || el.tagName === "HA-ICON-PICKER" || el.tagName === "HA-SLIDER") {
+      if (el.tagName === "HA-SLIDER") {
         el.addEventListener("value-changed", (ev) => {
-          ev.stopPropagation();
-          this._fireConfigChanged(key, el.tagName === "HA-SLIDER" ? parseFloat(ev.detail.value) : ev.detail.value);
+          this._fireConfigChanged(key, parseFloat(ev.detail.value));
         });
       } else if (el.tagName === "HA-SWITCH") {
         el.addEventListener("change", (ev) => {
@@ -313,49 +301,18 @@ class ElephantEntityCardEditor extends HTMLElement {
     });
   }
 
-  _update() {
-    if (!this._config || !this.shadowRoot) return;
-
-    // Entity picker updates automatically via .value binding
-
-    this.shadowRoot.querySelectorAll("[data-key]").forEach((el) => {
-      const key = el.dataset.key;
-      const val = this._config[key];
-
-      if (el.tagName === "HA-SWITCH") {
-        el.checked = val !== undefined ? val : true;
-      } else if (el.tagName === "INPUT" && el.type === "color") {
-        el.value = val || "#ffffff";
-      } else {
-        el.value = val !== undefined && val !== null ? String(val) : "";
-      }
-    });
-
-    // Update slider labels
-    this.shadowRoot.getElementById("blurVal").textContent =
-      this._config.blur_amount || 0;
-    this.shadowRoot.getElementById("transVal").textContent =
-      Math.round((this._config.transparency !== undefined ? this._config.transparency : 1) * 100);
-  }
-
   _fireConfigChanged(key, value) {
     const newConfig = { ...this._config, [key]: value };
     this._config = newConfig;
 
-    if (key === "blur_amount") {
-      this.shadowRoot.getElementById("blurVal").textContent = value;
-    }
-    if (key === "transparency") {
-      this.shadowRoot.getElementById("transVal").textContent = Math.round(value * 100);
-    }
+    if (key === "blur_amount") this.shadowRoot.getElementById("blurVal").textContent = value;
+    if (key === "transparency") this.shadowRoot.getElementById("transVal").textContent = Math.round(value * 100);
 
-    this.dispatchEvent(
-      new CustomEvent("config-changed", {
-        detail: { config: newConfig },
-        bubbles: true,
-        composed: true,
-      })
-    );
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: newConfig },
+      bubbles: true,
+      composed: true
+    }));
   }
 }
 
