@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Visual Editor Fine-Tuned */
+/* 🐘 Elephant Entity Card - Auto-Populating Editor */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -211,15 +211,15 @@ class ElephantEntityCardEditor extends HTMLElement {
         { name: "name", label: "Friendly Name", selector: { text: {} } },
         { name: "unit", label: "Friendly Unit", selector: { text: {} } },
         { name: "decimals", label: "Decimal Places", selector: { number: { min: 0, max: 5, mode: "box" } } },
-        { name: "icon", label: "Icon (Leave blank for default)", selector: { icon: {} } },
+        { name: "icon", label: "Select Custom Icon", selector: { icon: {} } },
         {
           type: "grid",
           name: "",
           column_min_width: "100px",
           schema: [
-            { name: "background_color", label: "Choose Background Colour", selector: { color_rgb: {} } },
-            { name: "text_color", label: "Choose Text Colour", selector: { color_rgb: {} } },
-            { name: "icon_color", label: "Choose Icon Colour", selector: { color_rgb: {} } },
+            { name: "background_color", label: "Card Background Colour", selector: { color_rgb: {} } },
+            { name: "text_color", label: "Main Text Colour", selector: { color_rgb: {} } },
+            { name: "icon_color", label: "Icon Colour", selector: { color_rgb: {} } },
           ]
         },
         { name: "transparency", label: "Choose Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
@@ -227,12 +227,19 @@ class ElephantEntityCardEditor extends HTMLElement {
       ];
       
       this._form.addEventListener("value-changed", (ev) => {
-        const config = { ...this._config, ...ev.detail.value };
+        const newValue = ev.detail.value;
+        const config = { ...this._config, ...newValue };
         config.type = "custom:elephant-entity-card";
         
-        // Use default entity icon if user clears the icon field
-        if (!config.icon && config.entity && this._hass.states[config.entity]) {
-            config.icon = this._hass.states[config.entity].attributes.icon || "";
+        // Auto-populate defaults when an entity is first selected
+        if (newValue.entity && newValue.entity !== this._config.entity) {
+          const stateObj = this._hass.states[newValue.entity];
+          if (stateObj) {
+            if (!config.icon) config.icon = stateObj.attributes.icon || "";
+            if (!config.background_color) config.background_color = [255, 255, 255];
+            if (!config.text_color) config.text_color = [255, 255, 255];
+            if (!config.icon_color) config.icon_color = [255, 255, 255];
+          }
         }
 
         this.dispatchEvent(new CustomEvent("config-changed", {
@@ -255,6 +262,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Standard-sized glass card with name/unit/decimal overrides",
+  description: "Auto-populating glass card with custom overrides",
   preview: true
 });
