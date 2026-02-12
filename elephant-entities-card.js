@@ -201,6 +201,7 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // After render, always push the live hass object directly onto the picker
     if (this.shadowRoot) {
       const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
       if (entityPicker) entityPicker.hass = hass;
@@ -217,6 +218,9 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 
   _render() {
+    // NOTE: ha-entity-picker must NOT have .hass or .value set via template
+    // literals — complex objects get stringified and break the component.
+    // Instead we assign them as JS properties after innerHTML is set (see below).
     this.shadowRoot.innerHTML = `
       <style>
         .form { display: flex; flex-direction: column; gap:16px; padding:12px; }
@@ -228,10 +232,10 @@ class ElephantEntityCardEditor extends HTMLElement {
       </style>
 
       <div class="form">
-        <ha-entity-picker label="Entity" .hass="${this._hass}" .value="${this._config.entity}" configValue="entity"></ha-entity-picker>
-        <ha-textfield label="Friendly Name" .value="${this._config.name || ''}" configValue="name"></ha-textfield>
-        <ha-textfield label="Friendly Unit" .value="${this._config.unit || ''}" configValue="unit"></ha-textfield>
-        <ha-icon-picker label="Icon" .value="${this._config.icon || ''}" configValue="icon"></ha-icon-picker>
+        <ha-entity-picker label="Entity" configValue="entity"></ha-entity-picker>
+        <ha-textfield label="Friendly Name" configValue="name"></ha-textfield>
+        <ha-textfield label="Friendly Unit" configValue="unit"></ha-textfield>
+        <ha-icon-picker label="Icon" configValue="icon"></ha-icon-picker>
 
         <div class="row">
           <div class="color-item">
@@ -264,6 +268,11 @@ class ElephantEntityCardEditor extends HTMLElement {
       </div>
     `;
 
+    // Assign hass and value as real JS properties — not HTML attributes
+    const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
+    if (this._hass) entityPicker.hass = this._hass;
+    if (this._config) entityPicker.value = this._config.entity || "";
+
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
       // Listen for changes on HA specific components
       el.addEventListener("value-changed", ev => this._valueChanged(el.getAttribute("configValue"), ev.detail.value));
@@ -281,13 +290,17 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 
   _updateDisplay() {
-    if (!this._config) return;
+    if (!this._config || !this.shadowRoot) return;
 
     this.shadowRoot.querySelectorAll("[configValue]").forEach(el => {
       const key = el.getAttribute("configValue");
       const value = this._config[key];
 
-      if (el.tagName === "HA-SWITCH") {
+      if (el.tagName === "HA-ENTITY-PICKER") {
+        // Always set as a JS property, never via attribute
+        el.value = value || "";
+        if (this._hass) el.hass = this._hass;
+      } else if (el.tagName === "HA-SWITCH") {
         el.checked = value !== undefined ? value : true;
       } else if (el.tagName === "INPUT") {
         el.value = value || "#ffffff";
