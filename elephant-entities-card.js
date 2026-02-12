@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Color Fixed Version */
+/* 🐘 Elephant Entity Card - Decimals & Labels Updated */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -22,7 +22,8 @@ class ElephantEntityCard extends HTMLElement {
       icon_color: [255, 255, 255],
       blur_amount: 0,
       transparency: 1,
-      state_color: true
+      state_color: true,
+      decimals: 1
     };
   }
 
@@ -38,7 +39,6 @@ class ElephantEntityCard extends HTMLElement {
     this._render();
   }
 
-  // Helper to handle both Hex strings and RGB arrays
   _processColor(color) {
     if (!color) return null;
     if (Array.isArray(color)) return `rgb(${color.join(',')})`;
@@ -68,6 +68,12 @@ class ElephantEntityCard extends HTMLElement {
     const displayName = this._config.name || stateObj.attributes.friendly_name || this._config.entity;
     const unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:help-circle";
+
+    // Decimal Formatting Logic
+    let displayState = stateObj.state;
+    if (this._config.decimals !== undefined && !isNaN(parseFloat(displayState)) && isFinite(displayState)) {
+      displayState = parseFloat(displayState).toFixed(this._config.decimals);
+    }
 
     if (!this.shadowRoot.querySelector("ha-card")) {
       this.shadowRoot.innerHTML = `
@@ -113,7 +119,6 @@ class ElephantEntityCard extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
 
-    // Background & Glass Effect
     if (this._config.background_color) {
       const rgb = this._getRGBValues(this._config.background_color);
       card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
@@ -121,7 +126,6 @@ class ElephantEntityCard extends HTMLElement {
       card.style.webkitBackdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
     }
 
-    // Text & Icon Colors
     card.style.color = this._processColor(this._config.text_color) || "";
     
     iconEl.icon = icon;
@@ -132,7 +136,7 @@ class ElephantEntityCard extends HTMLElement {
     }
 
     this.shadowRoot.querySelector(".primary").textContent = displayName;
-    this.shadowRoot.querySelector(".secondary").textContent = `${stateObj.state} ${unit}`.trim();
+    this.shadowRoot.querySelector(".secondary").textContent = `${displayState} ${unit}`.trim();
   }
 
   _handleAction() {
@@ -185,6 +189,7 @@ class ElephantEntityCardEditor extends HTMLElement {
         { name: "entity", selector: { entity: {} } },
         { name: "name", label: "Override Name", selector: { text: {} } },
         { name: "unit", label: "Override Unit", selector: { text: {} } },
+        { name: "decimals", label: "Decimal Places", selector: { number: { min: 0, max: 5, mode: "box" } } },
         { name: "icon", selector: { icon: {} } },
         {
           type: "grid",
@@ -225,6 +230,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Glass-style card with name/unit overrides",
+  description: "Glass-style card with name/unit/decimal overrides",
   preview: true
 });
