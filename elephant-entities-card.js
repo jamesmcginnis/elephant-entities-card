@@ -195,8 +195,9 @@ class ElephantEntityCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      entity: "",
+      entity: "sun.sun",
       state_color: true,
+      icon: "mdi:elephant"
     };
   }
 
@@ -277,9 +278,10 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 }
 
+// Fixed the stray quote below
 customElements.define(
   "elephant-entity-card-editor",
-  ElephantEntityCardEditor"
+  ElephantEntityCardEditor
 );
 
 
