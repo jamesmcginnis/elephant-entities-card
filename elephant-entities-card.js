@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Auto-Icon & Native Defaults */
+/* 🐘 Elephant Entity Card - Auto-Populate Fix & Standard Native Defaults */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -17,10 +17,9 @@ class ElephantEntityCard extends HTMLElement {
       name: "",
       unit: "",
       icon: "",
-      // Null values force the card to use HA Theme defaults
-      background_color: null,
-      text_color: null,
-      icon_color: null,
+      background_color: "",
+      text_color: "",
+      icon_color: "",
       blur_amount: 0,
       transparency: 1,
       state_color: true,
@@ -61,7 +60,17 @@ class ElephantEntityCard extends HTMLElement {
 
   _render() {
     if (!this._hass || !this._config?.entity) {
-      this.shadowRoot.innerHTML = `<div style="padding:16px;background:var(--ha-card-background, #fff);color:var(--primary-text-color);border-radius:12px;">Select an entity</div>`;
+      this.shadowRoot.innerHTML = `
+        <style>
+          .placeholder {
+            padding: 16px;
+            background: var(--ha-card-background, #fff);
+            color: var(--primary-text-color);
+            border-radius: var(--ha-card-border-radius, 12px);
+            border: 1px solid var(--divider-color, #e0e0e0);
+          }
+        </style>
+        <div class="placeholder">Select an entity</div>`;
       return;
     }
 
@@ -71,6 +80,7 @@ class ElephantEntityCard extends HTMLElement {
     const isActive = ["on", "open", "playing", "home"].includes(stateObj.state);
     const displayName = this._config.name || stateObj.attributes.friendly_name || this._config.entity;
     const unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
+    // Priority: Config Icon -> Entity Attribute Icon -> Fallback
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:help-circle";
 
     let displayState = stateObj.state;
@@ -88,13 +98,15 @@ class ElephantEntityCard extends HTMLElement {
             gap: 12px;
             min-height: 66px; /* Standard HA Tile Height */
             cursor: pointer;
-            transition: 0.2s ease;
+            transition: all 0.2s ease;
             overflow: hidden;
             position: relative;
             box-sizing: border-box;
             border-radius: var(--ha-card-border-radius, 12px);
+            /* Default to Native HA Variables */
             background: var(--ha-card-background, var(--card-background-color, white));
             color: var(--primary-text-color);
+            box-shadow: var(--ha-card-box-shadow, 0px 2px 1px -1px rgba(0,0,0,0.2), 0px 1px 1px 0px rgba(0,0,0,0.14), 0px 1px 3px 0px rgba(0,0,0,0.12));
           }
           ha-card:active { transform: scale(0.98); }
           ha-icon { 
@@ -104,9 +116,10 @@ class ElephantEntityCard extends HTMLElement {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(var(--icon-rgb, 127, 127, 127), 0.1);
+            background: rgba(var(--icon-rgb, 127, 127, 127), 0.1); /* Default greyish bg */
             border-radius: 50%;
             flex-shrink: 0;
+            transition: color 0.2s ease;
           }
           .text { 
             display: flex; 
@@ -138,40 +151,42 @@ class ElephantEntityCard extends HTMLElement {
           </div>
         </ha-card>
       `;
-      
       this.shadowRoot.querySelector("ha-card").addEventListener("click", () => this._handleAction());
     }
 
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
 
-    // 1. Background Logic
+    // 1. Background Processing
     if (this._config.background_color) {
       const rgb = this._getRGBValues(this._config.background_color);
-      // Use Custom Color
-      card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
-      card.style.setProperty('--icon-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+      if (rgb) {
+        card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
+        card.style.setProperty('--icon-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+      }
     } else {
-      // Use HA Theme Default
-      card.style.background = ""; // Reset inline style to let CSS var take over
-      card.style.backgroundColor = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency ?? 1})`;
-      card.style.removeProperty('--icon-rgb'); // Let icon fallback to default gray
+      // RESET to Native Defaults
+      card.style.background = ""; 
+      card.style.backgroundColor = ""; 
+      card.style.removeProperty('--icon-rgb');
+      
+      // If transparency is modified but no color is chosen, apply transparency to the default theme background
+      if (this._config.transparency < 1) {
+         card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency})`;
+      }
     }
 
-    // 2. Blur Logic (Hidden from UI but functional)
-    if (this._config.blur_amount > 0) {
+    // 2. Blur Processing (Hidden feature)
+    if (this._config.blur_amount) {
         card.style.backdropFilter = `blur(${this._config.blur_amount}px)`;
         card.style.webkitBackdropFilter = `blur(${this._config.blur_amount}px)`;
-    } else {
-        card.style.backdropFilter = "";
-        card.style.webkitBackdropFilter = "";
     }
 
-    // 3. Text Color Logic
+    // 3. Text Color
     if (this._config.text_color) {
         card.style.color = this._processColor(this._config.text_color);
     } else {
-        card.style.color = ""; // Reset to allow theme default
+        card.style.color = ""; // Reset to CSS var
     }
 
     // 4. Icon Logic
@@ -249,16 +264,26 @@ class ElephantEntityCardEditor extends HTMLElement {
       
       this._form.addEventListener("value-changed", (ev) => {
         const newValue = ev.detail.value;
-        const config = { ...this._config, ...newValue };
+        const oldEntity = this._config.entity;
+        
+        // Merge updates
+        let config = { ...this._config, ...newValue };
         config.type = "custom:elephant-entity-card";
         
-        // Auto-populate icon in the Editor Field when entity changes
-        if (newValue.entity && newValue.entity !== this._config.entity) {
+        // AUTO-POPULATE LOGIC:
+        // If entity changed, grab the icon immediately and PUT IT INTO THE CONFIG
+        if (newValue.entity && newValue.entity !== oldEntity) {
           const stateObj = this._hass.states[newValue.entity];
           if (stateObj) {
-            // This forces the "Select Custom Icon" field to fill with the default
-            config.icon = stateObj.attributes.icon || ""; 
+            const defIcon = stateObj.attributes.icon || "";
+            // We set the icon in the config object
+            config.icon = defIcon;
           }
+        }
+
+        // We must update the form's data so the UI reflects the change immediately
+        if (this._form) {
+            this._form.data = config;
         }
 
         this.dispatchEvent(new CustomEvent("config-changed", {
@@ -281,6 +306,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Standard size HA card with auto-filling defaults",
+  description: "Standard HA Card with Auto-Icon Population",
   preview: true
 });
