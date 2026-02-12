@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Decimals & Labels Updated */
+/* 🐘 Elephant Entity Card - Standard Size Update */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -69,7 +69,6 @@ class ElephantEntityCard extends HTMLElement {
     const unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
     const icon = this._config.icon || stateObj.attributes.icon || "mdi:help-circle";
 
-    // Decimal Formatting Logic
     let displayState = stateObj.state;
     if (this._config.decimals !== undefined && !isNaN(parseFloat(displayState)) && isFinite(displayState)) {
       displayState = parseFloat(displayState).toFixed(this._config.decimals);
@@ -79,29 +78,50 @@ class ElephantEntityCard extends HTMLElement {
       this.shadowRoot.innerHTML = `
         <style>
           ha-card {
-            padding: 16px;
+            padding: 12px;
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 12px;
+            min-height: 66px; /* Standard Home Assistant Tile Height */
             cursor: pointer;
             transition: 0.2s ease;
             overflow: hidden;
             position: relative;
+            box-sizing: border-box;
             border-radius: var(--ha-card-border-radius, 12px);
           }
           ha-card:active { transform: scale(0.98); }
-          ha-icon { --mdc-icon-size: 32px; }
-          .text { display: flex; flex-direction: column; overflow: hidden; }
+          ha-icon { 
+            --mdc-icon-size: 24px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(var(--rgb, 255, 255, 255), 0.1);
+            border-radius: 50%;
+            flex-shrink: 0;
+          }
+          .text { 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+            justify-content: center;
+          }
           .primary {
-            font-size: 1rem;
+            font-size: 14px;
             font-weight: 500;
+            line-height: 20px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            color: inherit;
           }
           .secondary {
-            font-size: 0.875rem;
+            font-size: 12px;
+            line-height: 16px;
             opacity: 0.7;
+            color: inherit;
           }
         </style>
         <ha-card>
@@ -118,12 +138,13 @@ class ElephantEntityCard extends HTMLElement {
 
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
+    const rgb = this._getRGBValues(this._config.background_color);
 
     if (this._config.background_color) {
-      const rgb = this._getRGBValues(this._config.background_color);
       card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
       card.style.backdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
       card.style.webkitBackdropFilter = this._config.blur_amount ? `blur(${this._config.blur_amount}px)` : "";
+      card.style.setProperty('--rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
     }
 
     card.style.color = this._processColor(this._config.text_color) || "";
@@ -230,6 +251,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Glass-style card with name/unit/decimal overrides",
+  description: "Standard-sized glass card with name/unit/decimal overrides",
   preview: true
 });
