@@ -95,18 +95,23 @@ class ElephantEntityCard extends HTMLElement {
 
   _handleAction(ev, action) {
     const actionConfig = this.config[`${action}_action`] || { action: "more-info" };
+
     if (actionConfig.action === "none") return;
 
     if (actionConfig.action === "more-info") {
-      this.dispatchEvent(new CustomEvent("hass-more-info", {
-        detail: { entityId: this.config.entity },
-        bubbles: true,
-        composed: true,
-      }));
+      this.dispatchEvent(
+        new CustomEvent("hass-more-info", {
+          detail: { entityId: this.config.entity },
+          bubbles: true,
+          composed: true,
+        })
+      );
     }
 
     if (actionConfig.action === "toggle") {
-      this._hass.callService("homeassistant", "toggle", { entity_id: this.config.entity });
+      this._hass.callService("homeassistant", "toggle", {
+        entity_id: this.config.entity,
+      });
     }
 
     if (actionConfig.action === "navigate" && actionConfig.navigation_path) {
@@ -158,6 +163,7 @@ class ElephantEntityCard extends HTMLElement {
       const rgb = this._hexToRgb(this.config.background_color);
       card.style.background =
         `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.config.transparency})`;
+
       if (this.config.blur_amount > 0) {
         card.style.backdropFilter = `blur(${this.config.blur_amount}px)`;
         card.style.webkitBackdropFilter = `blur(${this.config.blur_amount}px)`;
@@ -171,12 +177,18 @@ class ElephantEntityCard extends HTMLElement {
 
     card.style.color = this.config.text_color || "";
 
+    // FIX: Use trim() to treat whitespace-only strings as empty, ensuring
+    // the override is only applied when a non-empty name/unit is configured.
     const nameOverride = (this.config.name || "").trim();
     this.shadowRoot.querySelector(".primary").textContent =
-      nameOverride ? nameOverride : (stateObj.attributes.friendly_name || this.config.entity);
+      nameOverride
+        ? nameOverride
+        : (stateObj.attributes.friendly_name || this.config.entity);
 
     const unitOverride = (this.config.unit || "").trim();
-    const unit = unitOverride ? unitOverride : (stateObj.attributes.unit_of_measurement || "");
+    const unit = unitOverride
+      ? unitOverride
+      : (stateObj.attributes.unit_of_measurement || "");
 
     this.shadowRoot.querySelector(".secondary").textContent =
       `${stateObj.state}${unit ? ' ' + unit : ''}`.trim();
@@ -208,6 +220,7 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // FIX: Always keep the entity picker's hass reference up to date.
     if (this.shadowRoot) {
       const picker = this.shadowRoot.querySelector("ha-entity-picker");
       if (picker) picker.hass = hass;
@@ -279,23 +292,43 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 
   _attachListeners() {
-    // Entity picker
+    // FIX: Entity picker is handled separately since it doesn't use data-key.
     const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
     entityPicker.addEventListener("value-changed", (ev) => {
+      // Prevent the event bubbling up and being misinterpreted.
+      ev.stopPropagation();
       this._fireConfigChanged("entity", ev.detail.value);
     });
 
-    // Other inputs
+    // FIX: Use data-key instead of configValue to avoid HA's own attribute
+    // handling from interfering, and handle each element type explicitly.
     this.shadowRoot.querySelectorAll("[data-key]").forEach((el) => {
       const key = el.dataset.key;
-      if (el.tagName === "HA-TEXTFIELD" || el.tagName === "HA-ICON-PICKER") {
-        el.addEventListener("value-changed", (ev) => this._fireConfigChanged(key, ev.detail.value));
+
+      if (el.tagName === "HA-TEXTFIELD") {
+        // ha-textfield fires "value-changed" with ev.detail.value (a string).
+        el.addEventListener("value-changed", (ev) => {
+          ev.stopPropagation();
+          this._fireConfigChanged(key, ev.detail.value);
+        });
+      } else if (el.tagName === "HA-ICON-PICKER") {
+        el.addEventListener("value-changed", (ev) => {
+          ev.stopPropagation();
+          this._fireConfigChanged(key, ev.detail.value);
+        });
       } else if (el.tagName === "HA-SLIDER") {
-        el.addEventListener("value-changed", (ev) => this._fireConfigChanged(key, parseFloat(ev.detail.value)));
+        el.addEventListener("value-changed", (ev) => {
+          ev.stopPropagation();
+          this._fireConfigChanged(key, parseFloat(ev.detail.value));
+        });
       } else if (el.tagName === "HA-SWITCH") {
-        el.addEventListener("change", (ev) => this._fireConfigChanged(key, ev.target.checked));
+        el.addEventListener("change", (ev) => {
+          this._fireConfigChanged(key, ev.target.checked);
+        });
       } else if (el.tagName === "INPUT" && el.type === "color") {
-        el.addEventListener("input", (ev) => this._fireConfigChanged(key, ev.target.value));
+        el.addEventListener("input", (ev) => {
+          this._fireConfigChanged(key, ev.target.value);
+        });
       }
     });
   }
@@ -303,35 +336,56 @@ class ElephantEntityCardEditor extends HTMLElement {
   _update() {
     if (!this._config || !this.shadowRoot) return;
 
+    // FIX: Set entity picker value directly (it's not in the data-key loop).
     const entityPicker = this.shadowRoot.querySelector("ha-entity-picker");
     if (entityPicker) {
-      entityPicker.hass = this._hass;
+      if (this._hass) entityPicker.hass = this._hass;
       entityPicker.value = this._config.entity || "";
     }
 
     this.shadowRoot.querySelectorAll("[data-key]").forEach((el) => {
       const key = el.dataset.key;
       const val = this._config[key];
+
       if (el.tagName === "HA-SWITCH") {
+        // FIX: Default state_color to true if not explicitly set.
         el.checked = val !== undefined ? val : true;
       } else if (el.tagName === "INPUT" && el.type === "color") {
         el.value = val || "#ffffff";
       } else {
+        // Covers ha-textfield, ha-icon-picker, ha-slider.
+        // FIX: Explicitly set to empty string rather than using || "" 
+        // so that a saved empty name doesn't fall back to a stale value.
         el.value = val !== undefined && val !== null ? String(val) : "";
       }
     });
 
-    this.shadowRoot.getElementById("blurVal").textContent = this._config.blur_amount || 0;
-    this.shadowRoot.getElementById("transVal").textContent = Math.round((this._config.transparency !== undefined ? this._config.transparency : 1) * 100);
+    // Update slider readout labels.
+    this.shadowRoot.getElementById("blurVal").textContent =
+      this._config.blur_amount || 0;
+    this.shadowRoot.getElementById("transVal").textContent =
+      Math.round((this._config.transparency !== undefined ? this._config.transparency : 1) * 100);
   }
 
   _fireConfigChanged(key, value) {
     const newConfig = { ...this._config, [key]: value };
     this._config = newConfig;
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: newConfig }, bubbles: true, composed: true }));
 
-    if (key === "blur_amount") this.shadowRoot.getElementById("blurVal").textContent = value;
-    if (key === "transparency") this.shadowRoot.getElementById("transVal").textContent = Math.round(value * 100);
+    // Re-render the slider labels if they changed.
+    if (key === "blur_amount") {
+      this.shadowRoot.getElementById("blurVal").textContent = value;
+    }
+    if (key === "transparency") {
+      this.shadowRoot.getElementById("transVal").textContent = Math.round(value * 100);
+    }
+
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: newConfig },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 }
 
