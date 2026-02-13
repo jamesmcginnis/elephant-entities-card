@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - User-Friendly Editor Labels */
+/* 🐘 Elephant Entity Card - Enforced User-Friendly Labels */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -249,14 +249,12 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   _getDefaultIcon(stateObj) {
     if (stateObj.attributes.icon) return stateObj.attributes.icon;
-    
     const domain = stateObj.entity_id.split('.')[0];
     const dClass = stateObj.attributes.device_class;
     
     switch (domain) {
       case 'light': return 'mdi:lightbulb';
-      case 'switch': 
-        return (dClass === 'outlet') ? 'mdi:power-plug' : 'mdi:toggle-switch';
+      case 'switch': return (dClass === 'outlet') ? 'mdi:power-plug' : 'mdi:toggle-switch';
       case 'person': return 'mdi:account';
       case 'sun': return 'mdi:white-balance-sunny';
       case 'weather': return 'mdi:weather-cloudy';
@@ -272,8 +270,6 @@ class ElephantEntityCardEditor extends HTMLElement {
         if (dClass === 'moisture') return 'mdi:water-alert';
         if (dClass === 'smoke') return 'mdi:smoke-detector';
         if (dClass === 'gas') return 'mdi:gas-cylinder';
-        if (dClass === 'carbon_monoxide') return 'mdi:molecule-co';
-        if (dClass === 'plug') return 'mdi:power-plug';
         return 'mdi:radiobox-marked';
       case 'sensor':
         if (dClass === 'temperature') return 'mdi:thermometer';
@@ -283,10 +279,8 @@ class ElephantEntityCardEditor extends HTMLElement {
         if (dClass === 'energy') return 'mdi:lightning-bolt';
         if (dClass === 'illuminance') return 'mdi:brightness-5';
         if (dClass === 'moisture') return 'mdi:water';
-        if (dClass === 'pressure') return 'mdi:gauge';
         return 'mdi:eye';
-      default:
-        return 'mdi:bookmark';
+      default: return 'mdi:bookmark';
     }
   }
 
@@ -301,6 +295,8 @@ class ElephantEntityCardEditor extends HTMLElement {
     const container = this.querySelector("#editor-container");
     if (!this._form) {
       this._form = document.createElement("ha-form");
+      
+      // Explicitly defining labels to override technical key names
       this._form.schema = [
         { name: "entity", label: "Select Entity", selector: { entity: {} } },
         { name: "name", label: "Friendly Name", selector: { text: {} } },
@@ -320,6 +316,9 @@ class ElephantEntityCardEditor extends HTMLElement {
         { name: "transparency", label: "Choose Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
         { name: "state_color", label: "Turn off Custom Icon Colour", selector: { boolean: {} } }
       ];
+
+      // Computation for translation/label support in ha-form
+      this._form.computeLabel = (schema) => schema.label || schema.name;
       
       this._form.addEventListener("value-changed", (ev) => {
         const newValue = ev.detail.value;
@@ -358,6 +357,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with streamlined editor labels",
+  description: "Tile card with high-compatibility editor labels",
   preview: true
 });
