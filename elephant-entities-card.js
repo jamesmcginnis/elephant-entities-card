@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Complete Removal of Blur Logic & Editor Slider */
+/* 🐘 Elephant Entity Card - Icon & Name Auto-Population */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -283,10 +283,18 @@ class ElephantEntityCardEditor extends HTMLElement {
         let config = { ...this._config, ...newValue };
         config.type = "custom:elephant-entity-card";
         
+        // AUTO-POPULATE LOGIC
         if (newValue.entity && newValue.entity !== oldEntity) {
           const stateObj = this._hass.states[newValue.entity];
           if (stateObj) {
-            config.icon = stateObj.attributes.icon || "";
+            // Auto-populate Name
+            if (stateObj.attributes.friendly_name) {
+              config.name = stateObj.attributes.friendly_name;
+            }
+            // Auto-populate Icon
+            if (stateObj.attributes.icon) {
+              config.icon = stateObj.attributes.icon;
+            }
           }
         }
 
@@ -314,6 +322,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Standard card with transparency and offline status logic",
+  description: "Standard card with full auto-population and offline logic",
   preview: true
 });
