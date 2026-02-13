@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Enhanced Auto-Population Logic */
+/* 🐘 Elephant Entity Card - Icon Mapping & Auto-Population */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -17,9 +17,9 @@ class ElephantEntityCard extends HTMLElement {
       name: "",
       unit: "",
       icon: "",
-      background_color: [255, 255, 255],
-      text_color: [0, 0, 0],
-      icon_color: [127, 127, 127],
+      background_color: "",
+      text_color: "",
+      icon_color: "",
       transparency: 1,
       state_color: true,
       decimals: 2
@@ -184,17 +184,16 @@ class ElephantEntityCard extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
 
-    const transparency = this._config.transparency ?? 1;
     if (this._config.background_color) {
       const rgb = this._getRGBValues(this._config.background_color);
       if (rgb) {
-        card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${transparency})`;
+        card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
         card.style.setProperty('--icon-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
       }
     } else {
       card.style.background = ""; 
-      if (transparency < 1) {
-         card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${transparency})`;
+      if (this._config.transparency < 1) {
+         card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency})`;
       }
     }
 
@@ -247,6 +246,49 @@ class ElephantEntityCardEditor extends HTMLElement {
     this._updateForm();
   }
 
+  _getDefaultIcon(stateObj) {
+    if (stateObj.attributes.icon) return stateObj.attributes.icon;
+    
+    const domain = stateObj.entity_id.split('.')[0];
+    const dClass = stateObj.attributes.device_class;
+    
+    switch (domain) {
+      case 'light': return 'mdi:lightbulb';
+      case 'switch': 
+        return (dClass === 'outlet') ? 'mdi:power-plug' : 'mdi:toggle-switch';
+      case 'person': return 'mdi:account';
+      case 'sun': return 'mdi:white-balance-sunny';
+      case 'weather': return 'mdi:weather-cloudy';
+      case 'climate': return 'mdi:thermostat';
+      case 'lock': return stateObj.state === 'locked' ? 'mdi:lock' : 'mdi:lock-open';
+      case 'media_player': return 'mdi:cast';
+      case 'fan': return 'mdi:fan';
+      case 'cover': return 'mdi:window-shutter';
+      case 'binary_sensor':
+        if (['door', 'garage_door', 'opening'].includes(dClass)) return stateObj.state === 'on' ? 'mdi:door-open' : 'mdi:door-closed';
+        if (dClass === 'window') return stateObj.state === 'on' ? 'mdi:window-open' : 'mdi:window-closed';
+        if (['motion', 'presence', 'occupancy'].includes(dClass)) return 'mdi:motion-sensor';
+        if (dClass === 'moisture') return 'mdi:water-alert';
+        if (dClass === 'smoke') return 'mdi:smoke-detector';
+        if (dClass === 'gas') return 'mdi:gas-cylinder';
+        if (dClass === 'carbon_monoxide') return 'mdi:molecule-co';
+        if (dClass === 'plug') return 'mdi:power-plug';
+        return 'mdi:radiobox-marked';
+      case 'sensor':
+        if (dClass === 'temperature') return 'mdi:thermometer';
+        if (dClass === 'humidity') return 'mdi:water-percent';
+        if (dClass === 'battery') return 'mdi:battery';
+        if (dClass === 'power') return 'mdi:flash';
+        if (dClass === 'energy') return 'mdi:lightning-bolt';
+        if (dClass === 'illuminance') return 'mdi:brightness-5';
+        if (dClass === 'moisture') return 'mdi:water';
+        if (dClass === 'pressure') return 'mdi:gauge';
+        return 'mdi:eye';
+      default:
+        return 'mdi:bookmark';
+    }
+  }
+
   _updateForm() {
     if (!this._hass || !this._config) return;
 
@@ -266,6 +308,7 @@ class ElephantEntityCardEditor extends HTMLElement {
         { name: "icon", label: "Select Custom Icon", selector: { icon: {} } },
         {
           type: "grid",
+          name: "",
           column_min_width: "100px",
           schema: [
             { name: "background_color", label: "Background", selector: { color_rgb: {} } },
@@ -281,27 +324,29 @@ class ElephantEntityCardEditor extends HTMLElement {
         const newValue = ev.detail.value;
         const oldEntity = this._config.entity;
         
-        let updatedConfig = { ...this._config, ...newValue };
-        updatedConfig.type = "custom:elephant-entity-card";
+        let config = { ...this._config, ...newValue };
+        config.type = "custom:elephant-entity-card";
         
-        // FORCED AUTO-POPULATION
+        // Auto-population when entity changes
         if (newValue.entity && newValue.entity !== oldEntity) {
           const stateObj = this._hass.states[newValue.entity];
           if (stateObj) {
+            config.icon = this._getDefaultIcon(stateObj);
             if (stateObj.attributes.friendly_name) {
-              updatedConfig.name = stateObj.attributes.friendly_name;
-            }
-            if (stateObj.attributes.icon) {
-              updatedConfig.icon = stateObj.attributes.icon;
+              config.name = stateObj.attributes.friendly_name;
             }
           }
-          // We must update the internal config and re-sync the form UI
-          this._config = updatedConfig;
-          this._updateForm(); 
+          // Force form refresh to show new values
+          this._config = config;
+          this._updateForm();
+        }
+
+        if (this._form) {
+            this._form.data = config;
         }
 
         this.dispatchEvent(new CustomEvent("config-changed", {
-          detail: { config: updatedConfig },
+          detail: { config },
           bubbles: true,
           composed: true
         }));
@@ -320,6 +365,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Card with reactive auto-population for Icon and Name",
+  description: "Tile card with enhanced mapping and auto-population",
   preview: true
 });
