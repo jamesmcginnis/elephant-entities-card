@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Fixed UI Colors & Blur Slider */
+/* 🐘 Elephant Entity Card - Auto-Blur & Transparency Logic */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -185,23 +185,28 @@ class ElephantEntityCard extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
 
-    // Background and Blur
+    // Handle Transparency & Background
+    const transparency = this._config.transparency ?? 1;
     if (this._config.background_color) {
       const rgb = this._getRGBValues(this._config.background_color);
       if (rgb) {
-        card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
+        card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${transparency})`;
         card.style.setProperty('--icon-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
       }
     } else {
       card.style.background = ""; 
-      if (this._config.transparency < 1) {
-         card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency})`;
+      if (transparency < 1) {
+         card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${transparency})`;
       }
     }
     
-    if (this._config.blur_amount > 0) {
-      card.style.backdropFilter = `blur(${this._config.blur_amount}px)`;
-      card.style.webkitBackdropFilter = `blur(${this._config.blur_amount}px)`;
+    // Automatic Blur Logic: Increase blur as transparency decreases
+    const autoBlur = (1 - transparency) * 12; // Base blur of up to 12px
+    const finalBlur = (this._config.blur_amount || 0) + autoBlur;
+
+    if (finalBlur > 0) {
+      card.style.backdropFilter = `blur(${finalBlur}px)`;
+      card.style.webkitBackdropFilter = `blur(${finalBlur}px)`;
     } else {
       card.style.backdropFilter = "";
       card.style.webkitBackdropFilter = "";
@@ -283,7 +288,7 @@ class ElephantEntityCardEditor extends HTMLElement {
           ]
         },
         { name: "transparency", label: "Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
-        { name: "blur_amount", label: "Blur Amount", selector: { number: { min: 0, max: 20, step: 1, mode: "slider" } } },
+        { name: "blur_amount", label: "Extra Blur Amount", selector: { number: { min: 0, max: 20, step: 1, mode: "slider" } } },
         { name: "state_color", label: "Use Default State Colours", selector: { boolean: {} } }
       ];
       
@@ -324,6 +329,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Fixed color logic and blur settings",
+  description: "Glassmorphism card with auto-blur and offline logic",
   preview: true
 });
