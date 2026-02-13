@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Expanded Icon Mapping */
+/* 🐘 Elephant Entity Card - Adjusted Layout Padding */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -121,7 +121,7 @@ class ElephantEntityCard extends HTMLElement {
       this.shadowRoot.innerHTML = `
         <style>
           ha-card {
-            padding: 12px;
+            padding: 12px 16px;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -358,6 +358,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with enhanced sensor icon mapping in the editor",
+  description: "Tile card with refined icon spacing",
   preview: true
 });
