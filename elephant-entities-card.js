@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Mushroom/Tile Spacing Match */
+/* 🐘 Elephant Entity Card - User-Friendly Editor Labels */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -312,9 +312,9 @@ class ElephantEntityCardEditor extends HTMLElement {
           name: "",
           column_min_width: "100px",
           schema: [
-            { name: "background_color", label: "Choose Background Colour", selector: { color_rgb: {} } },
-            { name: "text_color", label: "Choose Text Colour", selector: { color_rgb: {} } },
-            { name: "icon_color", label: "Choose Icon Colour", selector: { color_rgb: {} } },
+            { name: "background_color", label: "Background", selector: { color_rgb: {} } },
+            { name: "text_color", label: "Text", selector: { color_rgb: {} } },
+            { name: "icon_color", label: "Icon", selector: { color_rgb: {} } },
           ]
         },
         { name: "transparency", label: "Choose Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
@@ -358,6 +358,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with Mushroom-standard icon sizing and spacing",
+  description: "Tile card with streamlined editor labels",
   preview: true
 });
