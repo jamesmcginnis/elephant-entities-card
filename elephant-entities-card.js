@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Hard-Coded UI Label Fix */
+/* 🐘 Elephant Entity Card - Fixed UI Colors & Blur Slider */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -138,8 +138,8 @@ class ElephantEntityCard extends HTMLElement {
           ha-card:active { transform: scale(0.98); }
           ha-icon { 
             --mdc-icon-size: 20px;
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -185,6 +185,7 @@ class ElephantEntityCard extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
 
+    // Background and Blur
     if (this._config.background_color) {
       const rgb = this._getRGBValues(this._config.background_color);
       if (rgb) {
@@ -196,6 +197,14 @@ class ElephantEntityCard extends HTMLElement {
       if (this._config.transparency < 1) {
          card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency})`;
       }
+    }
+    
+    if (this._config.blur_amount > 0) {
+      card.style.backdropFilter = `blur(${this._config.blur_amount}px)`;
+      card.style.webkitBackdropFilter = `blur(${this._config.blur_amount}px)`;
+    } else {
+      card.style.backdropFilter = "";
+      card.style.webkitBackdropFilter = "";
     }
 
     if (this._config.text_color) {
@@ -247,43 +256,6 @@ class ElephantEntityCardEditor extends HTMLElement {
     this._updateForm();
   }
 
-  _getDefaultIcon(stateObj) {
-    if (stateObj.attributes.icon) return stateObj.attributes.icon;
-    const domain = stateObj.entity_id.split('.')[0];
-    const dClass = stateObj.attributes.device_class;
-    
-    switch (domain) {
-      case 'light': return 'mdi:lightbulb';
-      case 'switch': return (dClass === 'outlet') ? 'mdi:power-plug' : 'mdi:toggle-switch';
-      case 'person': return 'mdi:account';
-      case 'sun': return 'mdi:white-balance-sunny';
-      case 'weather': return 'mdi:weather-cloudy';
-      case 'climate': return 'mdi:thermostat';
-      case 'lock': return stateObj.state === 'locked' ? 'mdi:lock' : 'mdi:lock-open';
-      case 'media_player': return 'mdi:cast';
-      case 'fan': return 'mdi:fan';
-      case 'cover': return 'mdi:window-shutter';
-      case 'binary_sensor':
-        if (['door', 'garage_door', 'opening'].includes(dClass)) return stateObj.state === 'on' ? 'mdi:door-open' : 'mdi:door-closed';
-        if (dClass === 'window') return stateObj.state === 'on' ? 'mdi:window-open' : 'mdi:window-closed';
-        if (['motion', 'presence', 'occupancy'].includes(dClass)) return 'mdi:motion-sensor';
-        if (dClass === 'moisture') return 'mdi:water-alert';
-        if (dClass === 'smoke') return 'mdi:smoke-detector';
-        if (dClass === 'gas') return 'mdi:gas-cylinder';
-        return 'mdi:radiobox-marked';
-      case 'sensor':
-        if (dClass === 'temperature') return 'mdi:thermometer';
-        if (dClass === 'humidity') return 'mdi:water-percent';
-        if (dClass === 'battery') return 'mdi:battery';
-        if (dClass === 'power') return 'mdi:flash';
-        if (dClass === 'energy') return 'mdi:lightning-bolt';
-        if (dClass === 'illuminance') return 'mdi:brightness-5';
-        if (dClass === 'moisture') return 'mdi:water';
-        return 'mdi:eye';
-      default: return 'mdi:bookmark';
-    }
-  }
-
   _updateForm() {
     if (!this._hass || !this._config) return;
 
@@ -295,8 +267,7 @@ class ElephantEntityCardEditor extends HTMLElement {
     const container = this.querySelector("#editor-container");
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      
-      const schema = [
+      this._form.schema = [
         { name: "entity", label: "Select Entity", selector: { entity: {} } },
         { name: "name", label: "Friendly Name", selector: { text: {} } },
         { name: "unit", label: "Friendly Unit", selector: { text: {} } },
@@ -306,32 +277,15 @@ class ElephantEntityCardEditor extends HTMLElement {
           type: "grid",
           column_min_width: "100px",
           schema: [
-            { name: "background_color", selector: { color_rgb: {} } },
-            { name: "text_color", selector: { color_rgb: {} } },
-            { name: "icon_color", selector: { color_rgb: {} } },
+            { name: "background_color", label: "Background", selector: { color_rgb: {} } },
+            { name: "text_color", label: "Text", selector: { color_rgb: {} } },
+            { name: "icon_color", label: "Icon", selector: { color_rgb: {} } },
           ]
         },
-        { name: "transparency", label: "Choose Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
-        { name: "state_color", label: "Turn off Custom Icon Colour", selector: { boolean: {} } }
+        { name: "transparency", label: "Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
+        { name: "blur_amount", label: "Blur Amount", selector: { number: { min: 0, max: 20, step: 1, mode: "slider" } } },
+        { name: "state_color", label: "Use Default State Colours", selector: { boolean: {} } }
       ];
-
-      this._form.schema = schema;
-
-      this._form.computeLabel = (schemaItem) => {
-        const labels = {
-          entity: "Select Entity",
-          name: "Friendly Name",
-          unit: "Friendly Unit",
-          decimals: "Decimal Places",
-          icon: "Select Custom Icon",
-          background_color: "Background",
-          text_color: "Text",
-          icon_color: "Icon",
-          transparency: "Choose Transparency",
-          state_color: "Turn off Custom Icon Colour"
-        };
-        return labels[schemaItem.name] || schemaItem.name;
-      };
       
       this._form.addEventListener("value-changed", (ev) => {
         const newValue = ev.detail.value;
@@ -342,8 +296,12 @@ class ElephantEntityCardEditor extends HTMLElement {
         if (newValue.entity && newValue.entity !== oldEntity) {
           const stateObj = this._hass.states[newValue.entity];
           if (stateObj) {
-            config.icon = this._getDefaultIcon(stateObj);
+            config.icon = stateObj.attributes.icon || "";
           }
+        }
+
+        if (this._form) {
+            this._form.data = config;
         }
 
         this.dispatchEvent(new CustomEvent("config-changed", {
@@ -366,6 +324,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with fixed user-friendly editor labels",
+  description: "Fixed color logic and blur settings",
   preview: true
 });
