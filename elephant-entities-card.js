@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Enforced User-Friendly Labels */
+/* 🐘 Elephant Entity Card - Hard-Coded UI Label Fix */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -296,8 +296,7 @@ class ElephantEntityCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement("ha-form");
       
-      // Explicitly defining labels to override technical key names
-      this._form.schema = [
+      const schema = [
         { name: "entity", label: "Select Entity", selector: { entity: {} } },
         { name: "name", label: "Friendly Name", selector: { text: {} } },
         { name: "unit", label: "Friendly Unit", selector: { text: {} } },
@@ -305,20 +304,36 @@ class ElephantEntityCardEditor extends HTMLElement {
         { name: "icon", label: "Select Custom Icon", selector: { icon: {} } },
         {
           type: "grid",
-          name: "",
+          name: "colors",
           column_min_width: "100px",
           schema: [
-            { name: "background_color", label: "Background", selector: { color_rgb: {} } },
-            { name: "text_color", label: "Text", selector: { color_rgb: {} } },
-            { name: "icon_color", label: "Icon", selector: { color_rgb: {} } },
+            { name: "background_color", selector: { color_rgb: {} } },
+            { name: "text_color", selector: { color_rgb: {} } },
+            { name: "icon_color", selector: { color_rgb: {} } },
           ]
         },
         { name: "transparency", label: "Choose Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
         { name: "state_color", label: "Turn off Custom Icon Colour", selector: { boolean: {} } }
       ];
 
-      // Computation for translation/label support in ha-form
-      this._form.computeLabel = (schema) => schema.label || schema.name;
+      this._form.schema = schema;
+
+      // Forcefully mapping labels regardless of internal key names
+      this._form.computeLabel = (schemaItem) => {
+        const labels = {
+          entity: "Select Entity",
+          name: "Friendly Name",
+          unit: "Friendly Unit",
+          decimals: "Decimal Places",
+          icon: "Select Custom Icon",
+          background_color: "Background",
+          text_color: "Text",
+          icon_color: "Icon",
+          transparency: "Choose Transparency",
+          state_color: "Turn off Custom Icon Colour"
+        };
+        return labels[schemaItem.name] || schemaItem.name;
+      };
       
       this._form.addEventListener("value-changed", (ev) => {
         const newValue = ev.detail.value;
@@ -331,10 +346,6 @@ class ElephantEntityCardEditor extends HTMLElement {
           if (stateObj) {
             config.icon = this._getDefaultIcon(stateObj);
           }
-        }
-
-        if (this._form) {
-            this._form.data = config;
         }
 
         this.dispatchEvent(new CustomEvent("config-changed", {
@@ -357,6 +368,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with high-compatibility editor labels",
+  description: "Tile card with fixed user-friendly editor labels",
   preview: true
 });
