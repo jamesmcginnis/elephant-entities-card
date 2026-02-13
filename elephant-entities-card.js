@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Blur Slider Removed From Editor */
+/* 🐘 Elephant Entity Card - Complete Removal of Blur Logic & Editor Slider */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -184,7 +184,6 @@ class ElephantEntityCard extends HTMLElement {
     const card = this.shadowRoot.querySelector("ha-card");
     const iconEl = this.shadowRoot.querySelector("ha-icon");
 
-    // Handle Transparency & Background
     const transparency = this._config.transparency ?? 1;
     if (this._config.background_color) {
       const rgb = this._getRGBValues(this._config.background_color);
@@ -315,6 +314,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Standard card with offline logic and transparency",
+  description: "Standard card with transparency and offline status logic",
   preview: true
 });
