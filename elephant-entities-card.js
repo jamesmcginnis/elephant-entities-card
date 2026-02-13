@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Apple Glassmorphism Style */
+/* 🐘 Elephant Entity Card - Hard-Coded UI Label Fix */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -132,14 +132,8 @@ class ElephantEntityCard extends HTMLElement {
             position: relative;
             box-sizing: border-box;
             border-radius: var(--ha-card-border-radius, 12px);
+            background: var(--ha-card-background, var(--card-background-color, white));
             color: var(--primary-text-color);
-            
-            /* Apple Glassmorphism Effect */
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(20px) saturate(120%);
-            -webkit-backdrop-filter: blur(20px) saturate(120%);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
           }
           ha-card:active { transform: scale(0.98); }
           ha-icon { 
@@ -374,6 +368,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with Apple-style Glassmorphism",
+  description: "Tile card with fixed user-friendly editor labels",
   preview: true
 });
