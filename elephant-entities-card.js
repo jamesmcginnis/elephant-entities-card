@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Increased Edge Spacing */
+/* 🐘 Elephant Entity Card - Mushroom/Tile Spacing Match */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -121,7 +121,7 @@ class ElephantEntityCard extends HTMLElement {
       this.shadowRoot.innerHTML = `
         <style>
           ha-card {
-            padding: 12px 20px;
+            padding: 12px;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -138,8 +138,8 @@ class ElephantEntityCard extends HTMLElement {
           ha-card:active { transform: scale(0.98); }
           ha-icon { 
             --mdc-icon-size: 20px;
-            width: 36px;
-            height: 36px;
+            width: 40px;
+            height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -358,6 +358,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with spacious edge padding",
+  description: "Tile card with Mushroom-standard icon sizing and spacing",
   preview: true
 });
