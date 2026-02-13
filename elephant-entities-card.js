@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Offline Icon Status & Logic */
+/* 🐘 Elephant Entity Card - Expanded Icon Mapping */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -84,7 +84,6 @@ class ElephantEntityCard extends HTMLElement {
     const isOffline = stateObj.state === "unavailable" || stateObj.state === "unknown";
     const isActive = ["on", "open", "playing", "home", "locked"].includes(stateObj.state);
     
-    // Name Logic
     let displayName;
     if (this._config.name) {
       displayName = this._formatString(this._config.name);
@@ -94,7 +93,6 @@ class ElephantEntityCard extends HTMLElement {
       displayName = this._formatString(this._config.entity, true);
     }
 
-    // State Logic
     let displayState = stateObj.state;
     const domain = this._config.entity.split('.')[0];
     let unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
@@ -206,7 +204,6 @@ class ElephantEntityCard extends HTMLElement {
 
     iconEl.icon = icon;
     
-    // Icon Color logic with Offline override
     if (isOffline) {
       iconEl.style.color = "var(--disabled-text-color)";
     } else if (this._config.state_color === true) {
@@ -250,6 +247,49 @@ class ElephantEntityCardEditor extends HTMLElement {
     this._updateForm();
   }
 
+  _getDefaultIcon(stateObj) {
+    if (stateObj.attributes.icon) return stateObj.attributes.icon;
+    
+    const domain = stateObj.entity_id.split('.')[0];
+    const dClass = stateObj.attributes.device_class;
+    
+    switch (domain) {
+      case 'light': return 'mdi:lightbulb';
+      case 'switch': 
+        return (dClass === 'outlet') ? 'mdi:power-plug' : 'mdi:toggle-switch';
+      case 'person': return 'mdi:account';
+      case 'sun': return 'mdi:white-balance-sunny';
+      case 'weather': return 'mdi:weather-cloudy';
+      case 'climate': return 'mdi:thermostat';
+      case 'lock': return stateObj.state === 'locked' ? 'mdi:lock' : 'mdi:lock-open';
+      case 'media_player': return 'mdi:cast';
+      case 'fan': return 'mdi:fan';
+      case 'cover': return 'mdi:window-shutter';
+      case 'binary_sensor':
+        if (['door', 'garage_door', 'opening'].includes(dClass)) return stateObj.state === 'on' ? 'mdi:door-open' : 'mdi:door-closed';
+        if (dClass === 'window') return stateObj.state === 'on' ? 'mdi:window-open' : 'mdi:window-closed';
+        if (['motion', 'presence', 'occupancy'].includes(dClass)) return 'mdi:motion-sensor';
+        if (dClass === 'moisture') return 'mdi:water-alert';
+        if (dClass === 'smoke') return 'mdi:smoke-detector';
+        if (dClass === 'gas') return 'mdi:gas-cylinder';
+        if (dClass === 'carbon_monoxide') return 'mdi:molecule-co';
+        if (dClass === 'plug') return 'mdi:power-plug';
+        return 'mdi:radiobox-marked';
+      case 'sensor':
+        if (dClass === 'temperature') return 'mdi:thermometer';
+        if (dClass === 'humidity') return 'mdi:water-percent';
+        if (dClass === 'battery') return 'mdi:battery';
+        if (dClass === 'power') return 'mdi:flash';
+        if (dClass === 'energy') return 'mdi:lightning-bolt';
+        if (dClass === 'illuminance') return 'mdi:brightness-5';
+        if (dClass === 'moisture') return 'mdi:water';
+        if (dClass === 'pressure') return 'mdi:gauge';
+        return 'mdi:eye';
+      default:
+        return 'mdi:bookmark';
+    }
+  }
+
   _updateForm() {
     if (!this._hass || !this._config) return;
 
@@ -290,7 +330,7 @@ class ElephantEntityCardEditor extends HTMLElement {
         if (newValue.entity && newValue.entity !== oldEntity) {
           const stateObj = this._hass.states[newValue.entity];
           if (stateObj) {
-            config.icon = stateObj.attributes.icon || "";
+            config.icon = this._getDefaultIcon(stateObj);
           }
         }
 
@@ -318,6 +358,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with 'Offline' status and greyed icons for unavailable entities",
+  description: "Tile card with enhanced sensor icon mapping in the editor",
   preview: true
 });
