@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Auto-Blur & Transparency Logic */
+/* 🐘 Elephant Entity Card - Blur Removed */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -20,7 +20,6 @@ class ElephantEntityCard extends HTMLElement {
       background_color: [255, 255, 255],
       text_color: [0, 0, 0],
       icon_color: [127, 127, 127],
-      blur_amount: 0,
       transparency: 1,
       state_color: true,
       decimals: 2
@@ -199,18 +198,6 @@ class ElephantEntityCard extends HTMLElement {
          card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${transparency})`;
       }
     }
-    
-    // Automatic Blur Logic: Increase blur as transparency decreases
-    const autoBlur = (1 - transparency) * 12; // Base blur of up to 12px
-    const finalBlur = (this._config.blur_amount || 0) + autoBlur;
-
-    if (finalBlur > 0) {
-      card.style.backdropFilter = `blur(${finalBlur}px)`;
-      card.style.webkitBackdropFilter = `blur(${finalBlur}px)`;
-    } else {
-      card.style.backdropFilter = "";
-      card.style.webkitBackdropFilter = "";
-    }
 
     if (this._config.text_color) {
         card.style.color = this._processColor(this._config.text_color);
@@ -288,7 +275,6 @@ class ElephantEntityCardEditor extends HTMLElement {
           ]
         },
         { name: "transparency", label: "Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
-        { name: "blur_amount", label: "Extra Blur Amount", selector: { number: { min: 0, max: 20, step: 1, mode: "slider" } } },
         { name: "state_color", label: "Use Default State Colours", selector: { boolean: {} } }
       ];
       
@@ -329,6 +315,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Glassmorphism card with auto-blur and offline logic",
+  description: "Standard card with offline logic and transparency",
   preview: true
 });
