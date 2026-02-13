@@ -17,6 +17,7 @@ class ElephantEntityCard extends HTMLElement {
       name: "",
       unit: "",
       icon: "",
+      use_dynamic_icon: false,
       background_color: "",
       text_color: "",
       icon_color: "",
@@ -114,7 +115,10 @@ class ElephantEntityCard extends HTMLElement {
       displayState = this._formatString(displayState);
     }
 
-    const icon = this._config.icon || stateObj.attributes.icon || "mdi:help-circle";
+    // Dynamic Icon Logic Added Here
+    const icon = (this._config.use_dynamic_icon && stateObj.attributes.icon) 
+        ? stateObj.attributes.icon 
+        : (this._config.icon || stateObj.attributes.icon || "mdi:help-circle");
 
     if (!this.shadowRoot.querySelector("ha-card")) {
       this.shadowRoot.innerHTML = `
@@ -306,6 +310,7 @@ class ElephantEntityCardEditor extends HTMLElement {
         { name: "unit", label: "Friendly Unit", selector: { text: {} } },
         { name: "decimals", label: "Decimal Places", selector: { number: { min: 0, max: 5, mode: "box" } } },
         { name: "icon", label: "Select Custom Icon", selector: { icon: {} } },
+        { name: "use_dynamic_icon", label: "Use Dynamic Icon (Entity Attribute)", selector: { boolean: {} } }, // Added selector
         {
           type: "grid",
           name: "",
