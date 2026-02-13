@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Icon & Name Auto-Population */
+/* 🐘 Elephant Entity Card - Enhanced Auto-Population Logic */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
@@ -280,30 +280,28 @@ class ElephantEntityCardEditor extends HTMLElement {
       this._form.addEventListener("value-changed", (ev) => {
         const newValue = ev.detail.value;
         const oldEntity = this._config.entity;
-        let config = { ...this._config, ...newValue };
-        config.type = "custom:elephant-entity-card";
         
-        // AUTO-POPULATE LOGIC
+        let updatedConfig = { ...this._config, ...newValue };
+        updatedConfig.type = "custom:elephant-entity-card";
+        
+        // FORCED AUTO-POPULATION
         if (newValue.entity && newValue.entity !== oldEntity) {
           const stateObj = this._hass.states[newValue.entity];
           if (stateObj) {
-            // Auto-populate Name
             if (stateObj.attributes.friendly_name) {
-              config.name = stateObj.attributes.friendly_name;
+              updatedConfig.name = stateObj.attributes.friendly_name;
             }
-            // Auto-populate Icon
             if (stateObj.attributes.icon) {
-              config.icon = stateObj.attributes.icon;
+              updatedConfig.icon = stateObj.attributes.icon;
             }
           }
-        }
-
-        if (this._form) {
-            this._form.data = config;
+          // We must update the internal config and re-sync the form UI
+          this._config = updatedConfig;
+          this._updateForm(); 
         }
 
         this.dispatchEvent(new CustomEvent("config-changed", {
-          detail: { config },
+          detail: { config: updatedConfig },
           bubbles: true,
           composed: true
         }));
@@ -322,6 +320,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Standard card with full auto-population and offline logic",
+  description: "Card with reactive auto-population for Icon and Name",
   preview: true
 });
