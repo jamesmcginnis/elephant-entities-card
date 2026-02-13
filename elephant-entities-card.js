@@ -17,9 +17,9 @@ class ElephantEntityCard extends HTMLElement {
       name: "",
       unit: "",
       icon: "",
-      background_color: "",
-      text_color: "",
-      icon_color: "",
+      background_color: [255, 255, 255],
+      text_color: [0, 0, 0],
+      icon_color: [127, 127, 127],
       blur_amount: 0,
       transparency: 1,
       state_color: true,
@@ -304,7 +304,6 @@ class ElephantEntityCardEditor extends HTMLElement {
         { name: "icon", label: "Select Custom Icon", selector: { icon: {} } },
         {
           type: "grid",
-          name: "colors",
           column_min_width: "100px",
           schema: [
             { name: "background_color", selector: { color_rgb: {} } },
@@ -318,7 +317,6 @@ class ElephantEntityCardEditor extends HTMLElement {
 
       this._form.schema = schema;
 
-      // Forcefully mapping labels regardless of internal key names
       this._form.computeLabel = (schemaItem) => {
         const labels = {
           entity: "Select Entity",
