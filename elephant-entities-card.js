@@ -1,4 +1,4 @@
-/* 🐘 Elephant Entity Card - Blur Removed */
+/* 🐘 Elephant Entity Card - Blur Slider Removed From Editor */
 
 class ElephantEntityCard extends HTMLElement {
   constructor() {
