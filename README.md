@@ -1,5 +1,7 @@
 # 🐘 Elephant Entity Card
 
+WORK IN PROGRESS, NOT EVERYTHING WORKS AS EXPECTED 
+
 A compact, customisable entity card for [Home Assistant](https://www.home-assistant.io/) with smart icon mapping and automatic entity population.
 
 ![Preview 1](preview1.png)
