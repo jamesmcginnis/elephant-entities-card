@@ -42,32 +42,34 @@ class ElephantEntityCard extends HTMLElement {
   _formatString(str, isEntityId = false) {
     if (!str) return "";
     let workingString = str;
-    if (isEntityId && workingString.includes('.')) {
-      workingString = workingString.split('.').pop();
+    if (isEntityId && workingString.includes(".")) {
+      workingString = workingString.split(".").pop();
     }
     return workingString
-      .replace(/_/g, ' ')
+      .replace(/_/g, " ")
       .trim()
       .split(/\s+/)
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+      .join(" ");
   }
 
   _processColor(color) {
     if (!color) return null;
-    if (Array.isArray(color)) return `rgb(${color.join(',')})`;
+    if (Array.isArray(color)) return `rgb(${color.join(",")})`;
     return color;
   }
 
   _getRGBValues(color) {
     if (Array.isArray(color)) return { r: color[0], g: color[1], b: color[2] };
-    if (typeof color === 'string' && color.startsWith('#')) {
+    if (typeof color === "string" && color.startsWith("#")) {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
-      return result ? { 
-        r: parseInt(result[1], 16), 
-        g: parseInt(result[2], 16), 
-        b: parseInt(result[3], 16) 
-      } : { r: 255, g: 255, b: 255 };
+      return result
+        ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+          }
+        : { r: 255, g: 255, b: 255 };
     }
     return null;
   }
@@ -81,9 +83,13 @@ class ElephantEntityCard extends HTMLElement {
     const stateObj = this._hass.states[this._config.entity];
     if (!stateObj) return;
 
-    const isOffline = stateObj.state === "unavailable" || stateObj.state === "unknown";
-    const isActive = ["on", "open", "playing", "home", "locked"].includes(stateObj.state);
-    
+    const isOffline =
+      stateObj.state === "unavailable" || stateObj.state === "unknown";
+    const isActive = ["on", "open", "playing", "home", "locked"].includes(
+      stateObj.state
+    );
+
+    // ── Display name ──────────────────────────────────────────────────────────
     let displayName;
     if (this._config.name) {
       displayName = this._formatString(this._config.name);
@@ -93,34 +99,48 @@ class ElephantEntityCard extends HTMLElement {
       displayName = this._formatString(this._config.entity, true);
     }
 
+    // ── Display state ─────────────────────────────────────────────────────────
     let displayState = stateObj.state;
-    const domain = this._config.entity.split('.')[0];
-    let unit = this._config.unit || stateObj.attributes.unit_of_measurement || "";
+    const domain = this._config.entity.split(".")[0];
+    let unit =
+      this._config.unit || stateObj.attributes.unit_of_measurement || "";
 
     if (isOffline) {
       displayState = "Offline";
-      unit = ""; 
+      unit = "";
     } else if (domain === "lock") {
-      displayState = (displayState === "locked") ? "Locked" : "Unlocked";
+      displayState = displayState === "locked" ? "Locked" : "Unlocked";
     } else if (domain === "binary_sensor") {
       const deviceClass = stateObj.attributes.device_class;
       if (["door", "window", "opening", "garage_door"].includes(deviceClass)) {
-        displayState = (displayState === "on") ? "Open" : "Closed";
+        displayState = displayState === "on" ? "Open" : "Closed";
       } else {
-        displayState = (displayState === "on") ? "Detected" : "Clear";
+        displayState = displayState === "on" ? "Detected" : "Clear";
       }
-    } else if (this._config.decimals !== undefined && !isNaN(parseFloat(displayState)) && isFinite(displayState)) {
+    } else if (
+      this._config.decimals !== undefined &&
+      !isNaN(parseFloat(displayState)) &&
+      isFinite(displayState)
+    ) {
       displayState = parseFloat(displayState).toFixed(this._config.decimals);
     } else {
       displayState = this._formatString(displayState);
     }
 
-    // Dynamic Icon Logic Added Here
-    const icon = (this._config.use_dynamic_icon && stateObj.attributes.icon) 
-        ? stateObj.attributes.icon 
-        : (this._config.icon || stateObj.attributes.icon || "mdi:help-circle");
+    // ── DOM rebuild guard ─────────────────────────────────────────────────────
+    // Swap between ha-state-icon (dynamic) and ha-icon (static) only when the
+    // mode actually changes, avoiding unnecessary full DOM replacement.
+    const useDynamic = !!this._config.use_dynamic_icon;
+    const existingCard = this.shadowRoot.querySelector("ha-card");
+    const currentIconTag = existingCard
+      ? existingCard.querySelector("ha-state-icon")
+        ? "ha-state-icon"
+        : "ha-icon"
+      : null;
+    const wantedIconTag = useDynamic ? "ha-state-icon" : "ha-icon";
+    const needsRebuild = !existingCard || currentIconTag !== wantedIconTag;
 
-    if (!this.shadowRoot.querySelector("ha-card")) {
+    if (needsRebuild) {
       this.shadowRoot.innerHTML = `
         <style>
           ha-card {
@@ -139,7 +159,8 @@ class ElephantEntityCard extends HTMLElement {
             color: var(--primary-text-color);
           }
           ha-card:active { transform: scale(0.98); }
-          ha-icon { 
+          ha-icon,
+          ha-state-icon {
             --mdc-icon-size: 20px;
             width: 36px;
             height: 36px;
@@ -150,10 +171,10 @@ class ElephantEntityCard extends HTMLElement {
             border-radius: 50%;
             flex-shrink: 0;
           }
-          .text { 
-            display: flex; 
-            flex-direction: column; 
-            overflow: hidden; 
+          .text {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             justify-content: center;
             line-height: 1.2;
           }
@@ -175,58 +196,92 @@ class ElephantEntityCard extends HTMLElement {
           }
         </style>
         <ha-card>
-          <ha-icon></ha-icon>
+          <${wantedIconTag}></${wantedIconTag}>
           <div class="text">
             <div class="primary"></div>
             <div class="secondary"></div>
           </div>
         </ha-card>
       `;
-      this.shadowRoot.querySelector("ha-card").addEventListener("click", () => this._handleAction());
+      this.shadowRoot
+        .querySelector("ha-card")
+        .addEventListener("click", () => this._handleAction());
     }
 
     const card = this.shadowRoot.querySelector("ha-card");
-    const iconEl = this.shadowRoot.querySelector("ha-icon");
+    const iconEl = this.shadowRoot.querySelector(wantedIconTag);
 
+    // ── Icon resolution ───────────────────────────────────────────────────────
+    // Dynamic mode → ha-state-icon receives hass + stateObj and resolves icons
+    // through HA's full pipeline (entity registry, state-based templates, domain
+    // defaults). Required for entities whose icon changes with state, such as
+    // blood glucose trend arrows, covers, locks, etc.
+    //
+    // Static mode  → ha-icon uses the manually configured icon or the entity's
+    // attribute icon, falling back to a generic placeholder.
+    //
+    // IMPORTANT: do NOT set iconEl.icon when in dynamic mode. ha-state-icon
+    // manages its own icon property internally; setting it (even to null) can
+    // interfere with its rendering pipeline.
+    if (useDynamic) {
+      iconEl.hass = this._hass;
+      iconEl.stateObj = stateObj;
+    } else {
+      iconEl.icon =
+        this._config.icon || stateObj.attributes.icon || "mdi:help-circle";
+    }
+
+    // ── Background colour & --icon-rgb ────────────────────────────────────────
     if (this._config.background_color) {
       const rgb = this._getRGBValues(this._config.background_color);
       if (rgb) {
-        card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this._config.transparency ?? 1})`;
-        card.style.setProperty('--icon-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+        card.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${
+          this._config.transparency ?? 1
+        })`;
+        card.style.setProperty("--icon-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
       }
     } else {
-      card.style.background = ""; 
+      card.style.background = "";
+      // FIX: remove the CSS variable so the icon background circle tint does
+      // not linger after the user clears a previously set background colour.
+      card.style.removeProperty("--icon-rgb");
       if (this._config.transparency < 1) {
-         card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency})`;
+        card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency})`;
       }
     }
 
-    if (this._config.text_color) {
-        card.style.color = this._processColor(this._config.text_color);
-    }
+    // ── Text colour ───────────────────────────────────────────────────────────
+    // FIX: always write the property (including empty string reset) so clearing
+    // text_color in the editor actually takes effect rather than sticking.
+    card.style.color = this._config.text_color
+      ? this._processColor(this._config.text_color)
+      : "";
 
-    iconEl.icon = icon;
-    
+    // ── Icon colour ───────────────────────────────────────────────────────────
     if (isOffline) {
       iconEl.style.color = "var(--disabled-text-color)";
     } else if (this._config.state_color === true) {
-      iconEl.style.color = isActive ? "var(--state-active-color)" : "var(--disabled-text-color)";
+      iconEl.style.color = isActive
+        ? "var(--state-active-color)"
+        : "var(--disabled-text-color)";
     } else {
-      const customIconCol = this._processColor(this._config.icon_color);
-      iconEl.style.color = customIconCol || "inherit";
+      iconEl.style.color =
+        this._processColor(this._config.icon_color) || "inherit";
     }
 
     this.shadowRoot.querySelector(".primary").textContent = displayName;
-    this.shadowRoot.querySelector(".secondary").textContent = `${displayState} ${unit}`.trim();
+    this.shadowRoot.querySelector(".secondary").textContent =
+      `${displayState} ${unit}`.trim();
   }
 
   _handleAction() {
-    const event = new CustomEvent("hass-more-info", {
-      detail: { entityId: this._config.entity },
-      bubbles: true,
-      composed: true
-    });
-    this.dispatchEvent(event);
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        detail: { entityId: this._config.entity },
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 }
 
@@ -250,46 +305,186 @@ class ElephantEntityCardEditor extends HTMLElement {
     this._updateForm();
   }
 
+  // ── Dynamic schema ────────────────────────────────────────────────────────
+  // Called on every config change so irrelevant fields are hidden instantly:
+  //   • Custom Icon picker hidden when Dynamic State Icon is enabled
+  //   • Icon Colour picker hidden when Use State Colours is enabled
+  _buildSchema(config) {
+    const useDynamic = !!config?.use_dynamic_icon;
+    const useStateColor = config?.state_color !== false; // defaults to true
+
+    return [
+      // ── Entity ─────────────────────────────────────────────────────────────
+      {
+        name: "entity",
+        label: "Entity",
+        selector: { entity: {} }
+      },
+
+      // ── Display section ────────────────────────────────────────────────────
+      {
+        name: "display_section",
+        type: "expandable",
+        title: "Display",
+        icon: "mdi:label-outline",
+        schema: [
+          {
+            name: "name",
+            label: "Name Override",
+            selector: {
+              text: { placeholder: "Leave blank to use entity name" }
+            }
+          },
+          {
+            name: "unit",
+            label: "Unit Override",
+            selector: {
+              text: { placeholder: "Leave blank to use entity unit" }
+            }
+          },
+          {
+            name: "decimals",
+            label: "Decimal Places",
+            selector: { number: { min: 0, max: 5, mode: "box" } }
+          }
+        ]
+      },
+
+      // ── Icon section ───────────────────────────────────────────────────────
+      {
+        name: "icon_section",
+        type: "expandable",
+        title: "Icon",
+        icon: "mdi:image-outline",
+        schema: [
+          {
+            name: "use_dynamic_icon",
+            label: "Dynamic State Icon",
+            // Enables ha-state-icon which resolves the icon through HA's full
+            // pipeline — needed for entities whose icon changes with state
+            // (e.g. blood glucose trend, covers, locks, binary sensors).
+            selector: { boolean: {} }
+          },
+          // Hide manual icon picker when dynamic mode is on — it has no effect
+          ...(!useDynamic
+            ? [
+                {
+                  name: "icon",
+                  label: "Custom Icon",
+                  selector: { icon: {} }
+                }
+              ]
+            : [])
+        ]
+      },
+
+      // ── Appearance section ─────────────────────────────────────────────────
+      {
+        name: "appearance_section",
+        type: "expandable",
+        title: "Appearance",
+        icon: "mdi:palette-outline",
+        schema: [
+          {
+            name: "state_color",
+            label: "Use State Colours",
+            // Colours the icon based on active/inactive state.
+            // Disable this to set a custom fixed icon colour below.
+            selector: { boolean: {} }
+          },
+          {
+            type: "grid",
+            name: "",
+            column_min_width: "100px",
+            schema: [
+              {
+                name: "background_color",
+                label: "Background",
+                selector: { color_rgb: {} }
+              },
+              {
+                name: "text_color",
+                label: "Text",
+                selector: { color_rgb: {} }
+              },
+              // Hide icon colour picker when state colours handle it instead
+              ...(!useStateColor
+                ? [
+                    {
+                      name: "icon_color",
+                      label: "Icon",
+                      selector: { color_rgb: {} }
+                    }
+                  ]
+                : [])
+            ]
+          },
+          {
+            name: "transparency",
+            label: "Card Transparency",
+            selector: {
+              number: { min: 0, max: 1, step: 0.1, mode: "slider" }
+            }
+          }
+        ]
+      }
+    ];
+  }
+
   _getDefaultIcon(stateObj) {
     if (stateObj.attributes.icon) return stateObj.attributes.icon;
-    
-    const domain = stateObj.entity_id.split('.')[0];
+
+    const domain = stateObj.entity_id.split(".")[0];
     const dClass = stateObj.attributes.device_class;
-    
+
     switch (domain) {
-      case 'light': return 'mdi:lightbulb';
-      case 'switch': 
-        return (dClass === 'outlet') ? 'mdi:power-plug' : 'mdi:toggle-switch';
-      case 'person': return 'mdi:account';
-      case 'sun': return 'mdi:white-balance-sunny';
-      case 'weather': return 'mdi:weather-cloudy';
-      case 'climate': return 'mdi:thermostat';
-      case 'lock': return stateObj.state === 'locked' ? 'mdi:lock' : 'mdi:lock-open';
-      case 'media_player': return 'mdi:cast';
-      case 'fan': return 'mdi:fan';
-      case 'cover': return 'mdi:window-shutter';
-      case 'binary_sensor':
-        if (['door', 'garage_door', 'opening'].includes(dClass)) return stateObj.state === 'on' ? 'mdi:door-open' : 'mdi:door-closed';
-        if (dClass === 'window') return stateObj.state === 'on' ? 'mdi:window-open' : 'mdi:window-closed';
-        if (['motion', 'presence', 'occupancy'].includes(dClass)) return 'mdi:motion-sensor';
-        if (dClass === 'moisture') return 'mdi:water-alert';
-        if (dClass === 'smoke') return 'mdi:smoke-detector';
-        if (dClass === 'gas') return 'mdi:gas-cylinder';
-        if (dClass === 'carbon_monoxide') return 'mdi:molecule-co';
-        if (dClass === 'plug') return 'mdi:power-plug';
-        return 'mdi:radiobox-marked';
-      case 'sensor':
-        if (dClass === 'temperature') return 'mdi:thermometer';
-        if (dClass === 'humidity') return 'mdi:water-percent';
-        if (dClass === 'battery') return 'mdi:battery';
-        if (dClass === 'power') return 'mdi:flash';
-        if (dClass === 'energy') return 'mdi:lightning-bolt';
-        if (dClass === 'illuminance') return 'mdi:brightness-5';
-        if (dClass === 'moisture') return 'mdi:water';
-        if (dClass === 'pressure') return 'mdi:gauge';
-        return 'mdi:eye';
+      case "light":
+        return "mdi:lightbulb";
+      case "switch":
+        return dClass === "outlet" ? "mdi:power-plug" : "mdi:toggle-switch";
+      case "person":
+        return "mdi:account";
+      case "sun":
+        return "mdi:white-balance-sunny";
+      case "weather":
+        return "mdi:weather-cloudy";
+      case "climate":
+        return "mdi:thermostat";
+      case "lock":
+        return stateObj.state === "locked" ? "mdi:lock" : "mdi:lock-open";
+      case "media_player":
+        return "mdi:cast";
+      case "fan":
+        return "mdi:fan";
+      case "cover":
+        return "mdi:window-shutter";
+      case "binary_sensor":
+        if (["door", "garage_door", "opening"].includes(dClass))
+          return stateObj.state === "on" ? "mdi:door-open" : "mdi:door-closed";
+        if (dClass === "window")
+          return stateObj.state === "on"
+            ? "mdi:window-open"
+            : "mdi:window-closed";
+        if (["motion", "presence", "occupancy"].includes(dClass))
+          return "mdi:motion-sensor";
+        if (dClass === "moisture") return "mdi:water-alert";
+        if (dClass === "smoke") return "mdi:smoke-detector";
+        if (dClass === "gas") return "mdi:gas-cylinder";
+        if (dClass === "carbon_monoxide") return "mdi:molecule-co";
+        if (dClass === "plug") return "mdi:power-plug";
+        return "mdi:radiobox-marked";
+      case "sensor":
+        if (dClass === "temperature") return "mdi:thermometer";
+        if (dClass === "humidity") return "mdi:water-percent";
+        if (dClass === "battery") return "mdi:battery";
+        if (dClass === "power") return "mdi:flash";
+        if (dClass === "energy") return "mdi:lightning-bolt";
+        if (dClass === "illuminance") return "mdi:brightness-5";
+        if (dClass === "moisture") return "mdi:water";
+        if (dClass === "pressure") return "mdi:gauge";
+        return "mdi:eye";
       default:
-        return 'mdi:bookmark';
+        return "mdi:bookmark";
     }
   }
 
@@ -304,35 +499,15 @@ class ElephantEntityCardEditor extends HTMLElement {
     const container = this.querySelector("#editor-container");
     if (!this._form) {
       this._form = document.createElement("ha-form");
-      this._form.schema = [
-        { name: "entity", label: "Select Entity", selector: { entity: {} } },
-        { name: "name", label: "Friendly Name", selector: { text: {} } },
-        { name: "unit", label: "Friendly Unit", selector: { text: {} } },
-        { name: "decimals", label: "Decimal Places", selector: { number: { min: 0, max: 5, mode: "box" } } },
-        { name: "icon", label: "Select Custom Icon", selector: { icon: {} } },
-        { name: "use_dynamic_icon", label: "Use Dynamic Icon (Entity Attribute)", selector: { boolean: {} } }, // Added selector
-        {
-          type: "grid",
-          name: "",
-          column_min_width: "100px",
-          schema: [
-            { name: "background_color", label: "Background", selector: { color_rgb: {} } },
-            { name: "text_color", label: "Text", selector: { color_rgb: {} } },
-            { name: "icon_color", label: "Icon", selector: { color_rgb: {} } },
-          ]
-        },
-        { name: "transparency", label: "Transparency", selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } } },
-        { name: "state_color", label: "Use Default State Colours", selector: { boolean: {} } }
-      ];
-      
+
       this._form.addEventListener("value-changed", (ev) => {
         const newValue = ev.detail.value;
         const oldEntity = this._config.entity;
-        
+
         let config = { ...this._config, ...newValue };
         config.type = "custom:elephant-entity-card";
-        
-        // Auto-population when entity changes
+
+        // Auto-populate name & icon when entity is first picked or changed
         if (newValue.entity && newValue.entity !== oldEntity) {
           const stateObj = this._hass.states[newValue.entity];
           if (stateObj) {
@@ -341,24 +516,31 @@ class ElephantEntityCardEditor extends HTMLElement {
               config.name = stateObj.attributes.friendly_name;
             }
           }
-          // Force form refresh to show new values
-          this._config = config;
-          this._updateForm();
         }
 
+        this._config = config;
+
+        // Refresh schema so conditional fields appear/disappear immediately
+        // when the user toggles Dynamic State Icon or Use State Colours.
         if (this._form) {
-            this._form.data = config;
+          this._form.schema = this._buildSchema(config);
+          this._form.data = config;
         }
 
-        this.dispatchEvent(new CustomEvent("config-changed", {
-          detail: { config },
-          bubbles: true,
-          composed: true
-        }));
+        this.dispatchEvent(
+          new CustomEvent("config-changed", {
+            detail: { config },
+            bubbles: true,
+            composed: true
+          })
+        );
       });
+
       container.appendChild(this._form);
     }
 
+    // Always sync schema, hass, and data — covers external setConfig / hass updates
+    this._form.schema = this._buildSchema(this._config);
     this._form.hass = this._hass;
     this._form.data = this._config;
   }
@@ -370,6 +552,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "elephant-entity-card",
   name: "Elephant Entity Card",
-  description: "Tile card with enhanced mapping and auto-population",
+  description: "Compact entity tile with dynamic icons and full colour control",
   preview: true
 });
