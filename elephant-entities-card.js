@@ -242,8 +242,8 @@ class ElephantEntityCard extends HTMLElement {
       }
     } else {
       card.style.background = "";
-      // FIX: remove the CSS variable so the icon background circle tint does
-      // not linger after the user clears a previously set background colour.
+      // Remove the CSS variable so the icon background tint does not linger
+      // after the user clears a previously set background colour.
       card.style.removeProperty("--icon-rgb");
       if (this._config.transparency < 1) {
         card.style.background = `rgba(var(--rgb-card-background-color, 255, 255, 255), ${this._config.transparency})`;
@@ -251,8 +251,8 @@ class ElephantEntityCard extends HTMLElement {
     }
 
     // ── Text colour ───────────────────────────────────────────────────────────
-    // FIX: always write the property (including empty string reset) so clearing
-    // text_color in the editor actually takes effect rather than sticking.
+    // Always write the property (including empty string reset) so clearing
+    // text_color in the editor actually takes effect.
     card.style.color = this._config.text_color
       ? this._processColor(this._config.text_color)
       : "";
@@ -288,6 +288,11 @@ class ElephantEntityCard extends HTMLElement {
 customElements.define("elephant-entity-card", ElephantEntityCard);
 
 /* ===================== EDITOR ===================== */
+// The editor is built with raw HTML + individual ha-selector elements rather
+// than ha-form. ha-form only supports field labels — it has no mechanism to
+// display description text to users. Building the editor manually gives us
+// full control over layout and lets us add a clear description beneath every
+// single field so users know exactly what each option does.
 
 class ElephantEntityCardEditor extends HTMLElement {
   constructor() {
@@ -297,252 +302,348 @@ class ElephantEntityCardEditor extends HTMLElement {
 
   setConfig(config) {
     this._config = config;
-    this._updateForm();
+    if (this._hass) this._renderEditor();
   }
 
   set hass(hass) {
+    const firstRender = !this._hass;
     this._hass = hass;
-    this._updateForm();
+    if (firstRender && this._config) {
+      // First time both hass and config are available — do a full render.
+      this._renderEditor();
+    } else {
+      // Subsequent hass updates — only the entity selector needs the new hass
+      // reference. A full re-render would reset scroll position and flicker.
+      const entitySel = this.querySelector("#sel-entity");
+      if (entitySel) entitySel.hass = hass;
+    }
   }
 
-  // ── Dynamic schema ────────────────────────────────────────────────────────
-  // Called on every config change so irrelevant fields are hidden instantly:
-  //   • Custom Icon picker hidden when Dynamic State Icon is enabled
-  //   • Icon Colour picker hidden when Use State Colours is enabled
-  _buildSchema(config) {
-    const useDynamic = !!config?.use_dynamic_icon;
-    const useStateColor = config?.state_color !== false; // defaults to true
-
-    return [
-      // ── Entity ─────────────────────────────────────────────────────────────
-      {
-        name: "entity",
-        label: "Entity",
-        selector: { entity: {} }
-      },
-
-      // ── Display section ────────────────────────────────────────────────────
-      {
-        name: "display_section",
-        type: "expandable",
-        title: "Display",
-        icon: "mdi:label-outline",
-        schema: [
-          {
-            name: "name",
-            label: "Name Override",
-            selector: {
-              text: { placeholder: "Leave blank to use entity name" }
-            }
-          },
-          {
-            name: "unit",
-            label: "Unit Override",
-            selector: {
-              text: { placeholder: "Leave blank to use entity unit" }
-            }
-          },
-          {
-            name: "decimals",
-            label: "Decimal Places",
-            selector: { number: { min: 0, max: 5, mode: "box" } }
-          }
-        ]
-      },
-
-      // ── Icon section ───────────────────────────────────────────────────────
-      {
-        name: "icon_section",
-        type: "expandable",
-        title: "Icon",
-        icon: "mdi:image-outline",
-        schema: [
-          {
-            name: "use_dynamic_icon",
-            label: "Dynamic State Icon",
-            // Enables ha-state-icon which resolves the icon through HA's full
-            // pipeline — needed for entities whose icon changes with state
-            // (e.g. blood glucose trend, covers, locks, binary sensors).
-            selector: { boolean: {} }
-          },
-          // Hide manual icon picker when dynamic mode is on — it has no effect
-          ...(!useDynamic
-            ? [
-                {
-                  name: "icon",
-                  label: "Custom Icon",
-                  selector: { icon: {} }
-                }
-              ]
-            : [])
-        ]
-      },
-
-      // ── Appearance section ─────────────────────────────────────────────────
-      {
-        name: "appearance_section",
-        type: "expandable",
-        title: "Appearance",
-        icon: "mdi:palette-outline",
-        schema: [
-          {
-            name: "state_color",
-            label: "Use State Colours",
-            // Colours the icon based on active/inactive state.
-            // Disable this to set a custom fixed icon colour below.
-            selector: { boolean: {} }
-          },
-          {
-            type: "grid",
-            name: "",
-            column_min_width: "100px",
-            schema: [
-              {
-                name: "background_color",
-                label: "Background",
-                selector: { color_rgb: {} }
-              },
-              {
-                name: "text_color",
-                label: "Text",
-                selector: { color_rgb: {} }
-              },
-              // Hide icon colour picker when state colours handle it instead
-              ...(!useStateColor
-                ? [
-                    {
-                      name: "icon_color",
-                      label: "Icon",
-                      selector: { color_rgb: {} }
-                    }
-                  ]
-                : [])
-            ]
-          },
-          {
-            name: "transparency",
-            label: "Card Transparency",
-            selector: {
-              number: { min: 0, max: 1, step: 0.1, mode: "slider" }
-            }
-          }
-        ]
-      }
-    ];
-  }
-
+  // ── Default icon map ───────────────────────────────────────────────────────
   _getDefaultIcon(stateObj) {
     if (stateObj.attributes.icon) return stateObj.attributes.icon;
-
     const domain = stateObj.entity_id.split(".")[0];
     const dClass = stateObj.attributes.device_class;
-
     switch (domain) {
-      case "light":
-        return "mdi:lightbulb";
-      case "switch":
-        return dClass === "outlet" ? "mdi:power-plug" : "mdi:toggle-switch";
-      case "person":
-        return "mdi:account";
-      case "sun":
-        return "mdi:white-balance-sunny";
-      case "weather":
-        return "mdi:weather-cloudy";
-      case "climate":
-        return "mdi:thermostat";
-      case "lock":
-        return stateObj.state === "locked" ? "mdi:lock" : "mdi:lock-open";
-      case "media_player":
-        return "mdi:cast";
-      case "fan":
-        return "mdi:fan";
-      case "cover":
-        return "mdi:window-shutter";
+      case "light":        return "mdi:lightbulb";
+      case "switch":       return dClass === "outlet" ? "mdi:power-plug" : "mdi:toggle-switch";
+      case "person":       return "mdi:account";
+      case "sun":          return "mdi:white-balance-sunny";
+      case "weather":      return "mdi:weather-cloudy";
+      case "climate":      return "mdi:thermostat";
+      case "lock":         return stateObj.state === "locked" ? "mdi:lock" : "mdi:lock-open";
+      case "media_player": return "mdi:cast";
+      case "fan":          return "mdi:fan";
+      case "cover":        return "mdi:window-shutter";
       case "binary_sensor":
         if (["door", "garage_door", "opening"].includes(dClass))
           return stateObj.state === "on" ? "mdi:door-open" : "mdi:door-closed";
         if (dClass === "window")
-          return stateObj.state === "on"
-            ? "mdi:window-open"
-            : "mdi:window-closed";
-        if (["motion", "presence", "occupancy"].includes(dClass))
-          return "mdi:motion-sensor";
-        if (dClass === "moisture") return "mdi:water-alert";
-        if (dClass === "smoke") return "mdi:smoke-detector";
-        if (dClass === "gas") return "mdi:gas-cylinder";
+          return stateObj.state === "on" ? "mdi:window-open" : "mdi:window-closed";
+        if (["motion", "presence", "occupancy"].includes(dClass)) return "mdi:motion-sensor";
+        if (dClass === "moisture")       return "mdi:water-alert";
+        if (dClass === "smoke")          return "mdi:smoke-detector";
+        if (dClass === "gas")            return "mdi:gas-cylinder";
         if (dClass === "carbon_monoxide") return "mdi:molecule-co";
-        if (dClass === "plug") return "mdi:power-plug";
+        if (dClass === "plug")           return "mdi:power-plug";
         return "mdi:radiobox-marked";
       case "sensor":
-        if (dClass === "temperature") return "mdi:thermometer";
-        if (dClass === "humidity") return "mdi:water-percent";
-        if (dClass === "battery") return "mdi:battery";
-        if (dClass === "power") return "mdi:flash";
-        if (dClass === "energy") return "mdi:lightning-bolt";
-        if (dClass === "illuminance") return "mdi:brightness-5";
-        if (dClass === "moisture") return "mdi:water";
-        if (dClass === "pressure") return "mdi:gauge";
+        if (dClass === "temperature")  return "mdi:thermometer";
+        if (dClass === "humidity")     return "mdi:water-percent";
+        if (dClass === "battery")      return "mdi:battery";
+        if (dClass === "power")        return "mdi:flash";
+        if (dClass === "energy")       return "mdi:lightning-bolt";
+        if (dClass === "illuminance")  return "mdi:brightness-5";
+        if (dClass === "moisture")     return "mdi:water";
+        if (dClass === "pressure")     return "mdi:gauge";
         return "mdi:eye";
-      default:
-        return "mdi:bookmark";
+      default: return "mdi:bookmark";
     }
   }
 
-  _updateForm() {
+  // ── Full editor render ─────────────────────────────────────────────────────
+  // Builds the complete editor HTML and wires up every ha-selector element.
+  // Re-runs whenever a toggle changes a conditional field (use_dynamic_icon,
+  // state_color) so the right fields appear/disappear instantly.
+  _renderEditor() {
     if (!this._hass || !this._config) return;
 
-    if (!this._initialized) {
-      this.innerHTML = `<div id="editor-container"></div>`;
-      this._initialized = true;
-    }
+    const cfg = this._config;
+    const useDynamic   = !!cfg.use_dynamic_icon;
+    const useStateColor = cfg.state_color !== false; // defaults true
 
-    const container = this.querySelector("#editor-container");
-    if (!this._form) {
-      this._form = document.createElement("ha-form");
-
-      this._form.addEventListener("value-changed", (ev) => {
-        const newValue = ev.detail.value;
-        const oldEntity = this._config.entity;
-
-        let config = { ...this._config, ...newValue };
-        config.type = "custom:elephant-entity-card";
-
-        // Auto-populate name & icon when entity is first picked or changed
-        if (newValue.entity && newValue.entity !== oldEntity) {
-          const stateObj = this._hass.states[newValue.entity];
-          if (stateObj) {
-            config.icon = this._getDefaultIcon(stateObj);
-            if (stateObj.attributes.friendly_name) {
-              config.name = stateObj.attributes.friendly_name;
-            }
-          }
+    this.innerHTML = `
+      <style>
+        .eec-editor {
+          font-family: var(--mdc-typography-body2-font-family, var(--paper-font-body2_-_font-family, inherit));
+          color: var(--primary-text-color);
         }
-
-        this._config = config;
-
-        // Refresh schema so conditional fields appear/disappear immediately
-        // when the user toggles Dynamic State Icon or Use State Colours.
-        if (this._form) {
-          this._form.schema = this._buildSchema(config);
-          this._form.data = config;
+        .eec-section {
+          margin-bottom: 12px;
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.12));
+          border-radius: 8px;
+          overflow: hidden;
         }
+        .eec-section-header {
+          padding: 10px 14px;
+          background: var(--secondary-background-color, rgba(0,0,0,0.04));
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: var(--secondary-text-color);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .eec-field {
+          padding: 12px 14px 14px;
+          border-top: 1px solid var(--divider-color, rgba(0,0,0,0.08));
+        }
+        .eec-field:first-of-type {
+          border-top: none;
+        }
+        .eec-field-label {
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 4px;
+          color: var(--primary-text-color);
+        }
+        .eec-field-desc {
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--secondary-text-color);
+          margin-bottom: 10px;
+        }
+        .eec-field-desc strong {
+          color: var(--primary-text-color);
+          font-weight: 600;
+        }
+        .eec-colours-row {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+          gap: 12px;
+          align-items: start;
+        }
+        .eec-colour-item label {
+          display: block;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: var(--secondary-text-color);
+          margin-bottom: 6px;
+        }
+        ha-selector {
+          display: block;
+        }
+      </style>
 
-        this.dispatchEvent(
-          new CustomEvent("config-changed", {
-            detail: { config },
-            bubbles: true,
-            composed: true
-          })
-        );
+      <div class="eec-editor">
+
+        <!-- ══ ENTITY ══════════════════════════════════════════════════════ -->
+        <div class="eec-section">
+          <div class="eec-section-header">🔌 Entity</div>
+          <div class="eec-field">
+            <div class="eec-field-label">Entity</div>
+            <div class="eec-field-desc">
+              The Home Assistant entity this card will display.
+              Choosing a new entity will automatically fill in the name and icon fields below.
+            </div>
+            <ha-selector id="sel-entity"></ha-selector>
+          </div>
+        </div>
+
+        <!-- ══ DISPLAY ═════════════════════════════════════════════════════ -->
+        <div class="eec-section">
+          <div class="eec-section-header">🏷️ Display</div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Name Override</div>
+            <div class="eec-field-desc">
+              The label shown in the top line of the card.
+              Leave blank to automatically use the entity's friendly name from Home Assistant.
+            </div>
+            <ha-selector id="sel-name"></ha-selector>
+          </div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Unit Override</div>
+            <div class="eec-field-desc">
+              Replaces the unit shown after the state value — for example <strong>°C</strong>, <strong>%</strong>, or <strong>kWh</strong>.
+              Leave blank to use the unit already set on the entity in Home Assistant.
+            </div>
+            <ha-selector id="sel-unit"></ha-selector>
+          </div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Decimal Places</div>
+            <div class="eec-field-desc">
+              How many decimal places to show for numeric sensor values.
+              Set to <strong>0</strong> to display whole numbers only.
+              Has no effect on non-numeric states.
+            </div>
+            <ha-selector id="sel-decimals"></ha-selector>
+          </div>
+        </div>
+
+        <!-- ══ ICON ════════════════════════════════════════════════════════ -->
+        <div class="eec-section">
+          <div class="eec-section-header">🎯 Icon</div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Dynamic State Icon</div>
+            <div class="eec-field-desc">
+              <strong>ON —</strong> The icon automatically changes to reflect the entity's current state.
+              This is essential for entities like blood glucose trend sensors, covers, and locks
+              whose icon is different depending on state (e.g. an up arrow vs. a down arrow for a trend sensor).<br><br>
+              <strong>OFF —</strong> A single fixed icon is always shown regardless of state.
+              Use this for simple entities like temperature sensors where the icon never needs to change.
+            </div>
+            <ha-selector id="sel-use_dynamic_icon"></ha-selector>
+          </div>
+
+          ${!useDynamic ? `
+          <div class="eec-field">
+            <div class="eec-field-label">Custom Icon</div>
+            <div class="eec-field-desc">
+              Choose a fixed icon from the MDI (Material Design Icons) library.
+              If left blank, the entity's default icon from Home Assistant is used.
+              Not available when Dynamic State Icon is enabled above.
+            </div>
+            <ha-selector id="sel-icon"></ha-selector>
+          </div>
+          ` : ""}
+        </div>
+
+        <!-- ══ APPEARANCE ══════════════════════════════════════════════════ -->
+        <div class="eec-section">
+          <div class="eec-section-header">🎨 Appearance</div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Use State Colours</div>
+            <div class="eec-field-desc">
+              <strong>ON —</strong> The icon colour is managed automatically:
+              <strong>green</strong> when the entity is active (on, open, playing, home, or locked),
+              and <strong>grey</strong> when inactive or unavailable.<br><br>
+              <strong>OFF —</strong> You can set a fixed icon colour of your own choosing.
+              The icon colour picker will appear in the Colours section below when this is turned off.
+            </div>
+            <ha-selector id="sel-state_color"></ha-selector>
+          </div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Colours</div>
+            <div class="eec-field-desc">
+              Customise the card's colours.
+              Leave any colour unset to inherit the default value from your Home Assistant theme.
+              ${!useStateColor
+                ? "The <strong>Icon</strong> colour picker is available because Use State Colours is turned off."
+                : "The Icon colour picker is hidden because Use State Colours is managing it automatically."}
+            </div>
+            <div class="eec-colours-row">
+              <div class="eec-colour-item">
+                <label>Background</label>
+                <ha-selector id="sel-background_color"></ha-selector>
+              </div>
+              <div class="eec-colour-item">
+                <label>Text</label>
+                <ha-selector id="sel-text_color"></ha-selector>
+              </div>
+              ${!useStateColor ? `
+              <div class="eec-colour-item">
+                <label>Icon</label>
+                <ha-selector id="sel-icon_color"></ha-selector>
+              </div>
+              ` : ""}
+            </div>
+          </div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Card Transparency</div>
+            <div class="eec-field-desc">
+              Controls the opacity of the card's background.
+              <strong>1.0</strong> = fully solid (default).
+              <strong>0.0</strong> = fully transparent.
+              Values in between create a frosted or blended effect — useful when layering cards over
+              a background image or colour.
+            </div>
+            <ha-selector id="sel-transparency"></ha-selector>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    this._attachSelectors();
+  }
+
+  // ── Wire up ha-selector elements ───────────────────────────────────────────
+  // Sets the .selector and .value properties on each element (these must be JS
+  // properties, not HTML attributes) and adds value-changed listeners.
+  _attachSelectors() {
+    const cfg = this._config;
+
+    const fields = {
+      entity:           { selector: { entity: {} },                                          value: cfg.entity          || null },
+      name:             { selector: { text: {} },                                             value: cfg.name            || "" },
+      unit:             { selector: { text: {} },                                             value: cfg.unit            || "" },
+      decimals:         { selector: { number: { min: 0, max: 5, mode: "box" } },             value: cfg.decimals        ?? 2 },
+      use_dynamic_icon: { selector: { boolean: {} },                                          value: !!cfg.use_dynamic_icon },
+      icon:             { selector: { icon: {} },                                             value: cfg.icon            || null },
+      state_color:      { selector: { boolean: {} },                                          value: cfg.state_color     !== false },
+      background_color: { selector: { color_rgb: {} },                                        value: cfg.background_color || null },
+      text_color:       { selector: { color_rgb: {} },                                        value: cfg.text_color      || null },
+      icon_color:       { selector: { color_rgb: {} },                                        value: cfg.icon_color      || null },
+      transparency:     { selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } }, value: cfg.transparency ?? 1 },
+    };
+
+    for (const [key, { selector, value }] of Object.entries(fields)) {
+      const el = this.querySelector(`#sel-${key}`);
+      if (!el) continue; // element may be conditionally hidden
+
+      el.selector = selector;
+      el.value    = value;
+      if (key === "entity") el.hass = this._hass;
+
+      el.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation(); // prevent bubbling to parent cards
+        this._handleChange(key, ev.detail.value);
       });
+    }
+  }
 
-      container.appendChild(this._form);
+  // ── Handle a field change ──────────────────────────────────────────────────
+  _handleChange(key, value) {
+    let config = { ...this._config, [key]: value, type: "custom:elephant-entity-card" };
+
+    // Auto-populate name & icon when the entity is first picked or changed
+    if (key === "entity" && value && value !== this._config.entity) {
+      const stateObj = this._hass.states[value];
+      if (stateObj) {
+        config.icon = this._getDefaultIcon(stateObj);
+        if (stateObj.attributes.friendly_name) {
+          config.name = stateObj.attributes.friendly_name;
+        }
+      }
     }
 
-    // Always sync schema, hass, and data — covers external setConfig / hass updates
-    this._form.schema = this._buildSchema(this._config);
-    this._form.hass = this._hass;
-    this._form.data = this._config;
+    this._config = config;
+
+    // Re-render the editor when a toggle affects which fields are visible.
+    // For all other changes (text, numbers, colours) only the card preview
+    // needs updating — skip the re-render to avoid flickering.
+    if (key === "use_dynamic_icon" || key === "state_color" || key === "entity") {
+      this._renderEditor();
+    }
+
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 }
 
