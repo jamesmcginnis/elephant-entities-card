@@ -301,8 +301,27 @@ class ElephantEntityCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
+    const prev = this._config;
     this._config = config;
-    if (this._hass) this._renderEditor();
+
+    if (!this._hass) return;
+
+    // Only do a full re-render when a structural field changes (one that
+    // controls which selectors are shown/hidden). For every other field
+    // (text, numbers, colours) HA calls setConfig after each value-changed
+    // event, which would destroy and rebuild the DOM mid-typing — killing
+    // focus after a single character. Instead, just sync values in-place.
+    const structuralChange =
+      !prev ||
+      prev.entity            !== config.entity ||
+      prev.use_dynamic_icon  !== config.use_dynamic_icon ||
+      prev.state_color       !== config.state_color;
+
+    if (structuralChange) {
+      this._renderEditor();
+    } else {
+      this._syncSelectorValues();
+    }
   }
 
   set hass(hass) {
@@ -598,6 +617,8 @@ class ElephantEntityCardEditor extends HTMLElement {
       transparency:     { selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } }, value: cfg.transparency ?? 1 },
     };
 
+    this._selectorFields = fields; // store for _syncSelectorValues
+
     for (const [key, { selector, value }] of Object.entries(fields)) {
       const el = this.querySelector(`#sel-${key}`);
       if (!el) continue; // element may be conditionally hidden
@@ -610,6 +631,34 @@ class ElephantEntityCardEditor extends HTMLElement {
         ev.stopPropagation(); // prevent bubbling to parent cards
         this._handleChange(key, ev.detail.value);
       });
+    }
+  }
+
+  // ── Sync selector values without rebuilding the DOM ────────────────────────
+  // Called by setConfig when only non-structural fields change. Updates each
+  // selector's .value in-place so the active input element keeps focus.
+  _syncSelectorValues() {
+    const cfg = this._config;
+    const valueMap = {
+      entity:           cfg.entity           || null,
+      name:             cfg.name             || "",
+      unit:             cfg.unit             || "",
+      decimals:         cfg.decimals         ?? 2,
+      use_dynamic_icon: !!cfg.use_dynamic_icon,
+      icon:             cfg.icon             || null,
+      state_color:      cfg.state_color      !== false,
+      background_color: cfg.background_color || null,
+      text_color:       cfg.text_color       || null,
+      icon_color:       cfg.icon_color       || null,
+      transparency:     cfg.transparency     ?? 1,
+    };
+
+    for (const [key, value] of Object.entries(valueMap)) {
+      const el = this.querySelector(`#sel-${key}`);
+      // Skip elements that are hidden (conditional fields) or the one that
+      // is currently focused — updating its value would reset the cursor.
+      if (!el || el.contains(document.activeElement)) continue;
+      el.value = value;
     }
   }
 
