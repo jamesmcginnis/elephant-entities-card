@@ -154,7 +154,7 @@ class ElephantEntityCard extends HTMLElement {
             overflow: hidden;
             position: relative;
             box-sizing: border-box;
-            border-radius: var(--ha-card-border-radius, 12px);
+            border-radius: 999px;
             background: var(--ha-card-background, var(--card-background-color, white));
             color: var(--primary-text-color);
           }
