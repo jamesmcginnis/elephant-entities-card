@@ -1,5 +1,30 @@
 /* 🐘 Elephant Entity Card - Icon Mapping & Auto-Population */
 
+// ─────────────────────────────────────────────
+// Colour field definitions (editor only)
+// ─────────────────────────────────────────────
+const ELEPHANT_COLOUR_FIELDS_BASE = [
+  {
+    key:         "background_color",
+    label:       "Background",
+    description: "Colour of the card background. Leave blank to use your HA theme default.",
+    default:     "#1c1c1e",
+  },
+  {
+    key:         "text_color",
+    label:       "Text",
+    description: "Colour of the name and state text. Leave blank for theme default.",
+    default:     "#ffffff",
+  },
+];
+
+const ELEPHANT_COLOUR_FIELD_ICON = {
+  key:         "icon_color",
+  label:       "Icon",
+  description: "Colour of the icon. Only available when Use State Colours is off.",
+  default:     "#4caf50",
+};
+
 class ElephantEntityCard extends HTMLElement {
   constructor() {
     super();
@@ -456,6 +481,112 @@ class ElephantEntityCardEditor extends HTMLElement {
         ha-selector {
           display: block;
         }
+
+        /* ── Leopard-style colour grid ── */
+        .colour-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-bottom: 4px;
+        }
+        .colour-card {
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.12));
+          border-radius: 10px;
+          overflow: hidden;
+          cursor: pointer;
+          transition: box-shadow 0.15s, border-color 0.15s;
+          position: relative;
+        }
+        .colour-card:hover {
+          box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+          border-color: var(--primary-color, #03a9f4);
+        }
+        .colour-swatch {
+          height: 44px;
+          width: 100%;
+          display: block;
+          position: relative;
+        }
+        .colour-swatch input[type="color"] {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          opacity: 0;
+          cursor: pointer;
+          border: none;
+          padding: 0;
+        }
+        .colour-swatch-preview {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+        }
+        .colour-swatch::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image:
+            linear-gradient(45deg, #ccc 25%, transparent 25%),
+            linear-gradient(-45deg, #ccc 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #ccc 75%),
+            linear-gradient(-45deg, transparent 75%, #ccc 75%);
+          background-size: 8px 8px;
+          background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+          opacity: 0.3;
+          pointer-events: none;
+        }
+        .colour-info {
+          padding: 6px 8px 7px;
+          background: var(--card-background-color, #fff);
+        }
+        .colour-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--primary-text-color);
+          letter-spacing: 0.02em;
+          margin-bottom: 1px;
+        }
+        .colour-desc {
+          font-size: 10px;
+          color: var(--secondary-text-color, #6b7280);
+          margin-bottom: 4px;
+          line-height: 1.3;
+        }
+        .colour-hex-row {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .colour-dot {
+          width: 12px; height: 12px;
+          border-radius: 50%;
+          border: 1px solid rgba(0,0,0,0.15);
+          flex-shrink: 0;
+        }
+        .colour-hex {
+          flex: 1;
+          font-size: 11px;
+          font-family: monospace;
+          border: none;
+          background: none;
+          color: var(--secondary-text-color, #6b7280);
+          padding: 0;
+          width: 0;
+          min-width: 0;
+        }
+        .colour-hex:focus {
+          outline: none;
+          color: var(--primary-text-color);
+        }
+        .colour-edit-icon {
+          opacity: 0;
+          transition: opacity 0.15s;
+          color: var(--secondary-text-color);
+          font-size: 14px;
+          line-height: 1;
+        }
+        .colour-card:hover .colour-edit-icon { opacity: 1; }
       </style>
 
       <div class="eec-editor">
@@ -560,22 +691,7 @@ class ElephantEntityCardEditor extends HTMLElement {
                 ? "The <strong>Icon</strong> colour picker is available because Use State Colours is turned off."
                 : "The Icon colour picker is hidden because Use State Colours is managing it automatically."}
             </div>
-            <div class="eec-colours-row">
-              <div class="eec-colour-item">
-                <label>Background</label>
-                <ha-selector id="sel-background_color"></ha-selector>
-              </div>
-              <div class="eec-colour-item">
-                <label>Text</label>
-                <ha-selector id="sel-text_color"></ha-selector>
-              </div>
-              ${!useStateColor ? `
-              <div class="eec-colour-item">
-                <label>Icon</label>
-                <ha-selector id="sel-icon_color"></ha-selector>
-              </div>
-              ` : ""}
-            </div>
+            <div class="colour-grid" id="colour-grid"></div>
           </div>
 
           <div class="eec-field">
@@ -595,6 +711,7 @@ class ElephantEntityCardEditor extends HTMLElement {
     `;
 
     this._attachSelectors();
+    this._buildColourGrid(useStateColor);
   }
 
   // ── Wire up ha-selector elements ───────────────────────────────────────────
@@ -611,9 +728,6 @@ class ElephantEntityCardEditor extends HTMLElement {
       use_dynamic_icon: { selector: { boolean: {} },                                          value: !!cfg.use_dynamic_icon },
       icon:             { selector: { icon: {} },                                             value: cfg.icon            || null },
       state_color:      { selector: { boolean: {} },                                          value: cfg.state_color     !== false },
-      background_color: { selector: { color_rgb: {} },                                        value: cfg.background_color || null },
-      text_color:       { selector: { color_rgb: {} },                                        value: cfg.text_color      || null },
-      icon_color:       { selector: { color_rgb: {} },                                        value: cfg.icon_color      || null },
       transparency:     { selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } }, value: cfg.transparency ?? 1 },
     };
 
@@ -647,9 +761,6 @@ class ElephantEntityCardEditor extends HTMLElement {
       use_dynamic_icon: !!cfg.use_dynamic_icon,
       icon:             cfg.icon             || null,
       state_color:      cfg.state_color      !== false,
-      background_color: cfg.background_color || null,
-      text_color:       cfg.text_color       || null,
-      icon_color:       cfg.icon_color       || null,
       transparency:     cfg.transparency     ?? 1,
     };
 
@@ -659,6 +770,88 @@ class ElephantEntityCardEditor extends HTMLElement {
       // is currently focused — updating its value would reset the cursor.
       if (!el || el.contains(document.activeElement)) continue;
       el.value = value;
+    }
+    this._syncColours();
+  }
+
+  // ── Build leopard-style colour grid ───────────────────────────────────────
+  _buildColourGrid(useStateColor) {
+    const grid = this.querySelector("#colour-grid");
+    if (!grid) return;
+
+    const fields = [
+      ...ELEPHANT_COLOUR_FIELDS_BASE,
+      ...(useStateColor ? [] : [ELEPHANT_COLOUR_FIELD_ICON]),
+    ];
+
+    for (const field of fields) {
+      const savedVal  = this._config[field.key] || "";
+      const swatchVal = savedVal || field.default;
+
+      const card = document.createElement("div");
+      card.className   = "colour-card";
+      card.dataset.key = field.key;
+      card.innerHTML = `
+        <label class="colour-swatch">
+          <div class="colour-swatch-preview" style="background:${swatchVal}"></div>
+          <input type="color" value="${swatchVal}">
+        </label>
+        <div class="colour-info">
+          <div class="colour-label">${field.label}</div>
+          <div class="colour-desc">${field.description}</div>
+          <div class="colour-hex-row">
+            <div class="colour-dot" style="background:${swatchVal}"></div>
+            <input class="colour-hex" type="text" value="${savedVal}"
+              maxlength="7" placeholder="${field.default}" spellcheck="false">
+            <span class="colour-edit-icon">✎</span>
+          </div>
+        </div>
+      `;
+
+      const nativePicker = card.querySelector("input[type=color]");
+      const hexInput     = card.querySelector(".colour-hex");
+      const preview      = card.querySelector(".colour-swatch-preview");
+      const dot          = card.querySelector(".colour-dot");
+
+      const apply = (hex) => {
+        preview.style.background = hex;
+        dot.style.background     = hex;
+        nativePicker.value       = hex;
+        hexInput.value           = hex;
+        this._handleChange(field.key, hex);
+      };
+
+      nativePicker.addEventListener("input",  () => apply(nativePicker.value));
+      nativePicker.addEventListener("change", () => apply(nativePicker.value));
+
+      hexInput.addEventListener("input", () => {
+        const v = hexInput.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) apply(v);
+      });
+      hexInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") hexInput.blur();
+      });
+
+      grid.appendChild(card);
+    }
+  }
+
+  // ── Sync colour swatches from config (no re-render) ────────────────────────
+  _syncColours() {
+    const useStateColor = this._config.state_color !== false;
+    const fields = [
+      ...ELEPHANT_COLOUR_FIELDS_BASE,
+      ...(useStateColor ? [] : [ELEPHANT_COLOUR_FIELD_ICON]),
+    ];
+    for (const field of fields) {
+      const card = this.querySelector(`.colour-card[data-key="${field.key}"]`);
+      if (!card) continue;
+      const savedVal  = this._config[field.key] || "";
+      const swatchVal = savedVal || field.default;
+      card.querySelector(".colour-swatch-preview").style.background = swatchVal;
+      card.querySelector(".colour-dot").style.background            = swatchVal;
+      card.querySelector("input[type=color]").value                 = swatchVal;
+      card.querySelector(".colour-hex").value                       = savedVal;
     }
   }
 
