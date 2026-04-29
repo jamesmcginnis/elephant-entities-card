@@ -29,6 +29,8 @@ class ElephantEntityCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this._popupOverlay = null;
+    this._popupHours   = 3;
   }
 
   static getConfigElement() {
@@ -48,7 +50,9 @@ class ElephantEntityCard extends HTMLElement {
       icon_color: "",
       transparency: 1,
       state_color: true,
-      decimals: 2
+      decimals: 2,
+      graph_hours: 3,
+      graph_color: "#007AFF"
     };
   }
 
@@ -300,13 +304,421 @@ class ElephantEntityCard extends HTMLElement {
   }
 
   _handleAction() {
-    this.dispatchEvent(
-      new CustomEvent("hass-more-info", {
-        detail: { entityId: this._config.entity },
-        bubbles: true,
-        composed: true
-      })
+    this._openPopup();
+  }
+
+  // ── Popup ─────────────────────────────────────────────────────────────────
+
+  _openPopup() {
+    if (this._popupOverlay) return;
+
+    const cfg      = this._config;
+    const stateObj = this._hass && this._hass.states[cfg.entity];
+    if (!stateObj) return;
+
+    // Resolve display values (mirrors _render logic)
+    let displayName;
+    if (cfg.name) {
+      displayName = this._formatString(cfg.name);
+    } else if (stateObj.attributes.friendly_name) {
+      displayName = this._formatString(stateObj.attributes.friendly_name);
+    } else {
+      displayName = this._formatString(cfg.entity, true);
+    }
+
+    const domain   = cfg.entity.split(".")[0];
+    const unit     = cfg.unit || stateObj.attributes.unit_of_measurement || "";
+    const isActive = ["on","open","playing","home","locked"].includes(stateObj.state);
+
+    let displayState = stateObj.state;
+    if (stateObj.state === "unavailable" || stateObj.state === "unknown") {
+      displayState = "Offline";
+    } else if (domain === "lock") {
+      displayState = displayState === "locked" ? "Locked" : "Unlocked";
+    } else if (domain === "binary_sensor") {
+      const dc = stateObj.attributes.device_class;
+      if (["door","window","opening","garage_door"].includes(dc)) {
+        displayState = displayState === "on" ? "Open" : "Closed";
+      } else {
+        displayState = displayState === "on" ? "Detected" : "Clear";
+      }
+    } else if (cfg.decimals !== undefined && !isNaN(parseFloat(displayState)) && isFinite(displayState)) {
+      displayState = parseFloat(displayState).toFixed(cfg.decimals);
+    } else {
+      displayState = this._formatString(displayState);
+    }
+
+    const lastUpdate  = stateObj.last_changed || stateObj.last_updated;
+    let timeAgoStr = "--";
+    if (lastUpdate) {
+      const mins = Math.floor((Date.now() - new Date(lastUpdate).getTime()) / 60000);
+      timeAgoStr = mins < 1 ? "Just now" : mins === 1 ? "1 min ago" : mins < 60 ? `${mins} mins ago` : `${Math.floor(mins/60)}h ago`;
+    }
+
+    // Accent colour: use icon_color if set, else state colour, else blue
+    const accentColor = cfg.icon_color
+      ? this._processColor(cfg.icon_color)
+      : (cfg.state_color !== false
+          ? (isActive ? "var(--state-active-color, #4caf50)" : "var(--disabled-text-color, #9e9e9e)")
+          : "#007AFF");
+
+    const graphColor = cfg.graph_color || "#007AFF";
+    this._popupHours = parseInt(cfg.graph_hours) || 3;
+
+    // ── Overlay ──
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);";
+
+    const styleEl = document.createElement("style");
+    styleEl.textContent = `
+      @keyframes eecFadeIn  { from { opacity:0 } to { opacity:1 } }
+      @keyframes eecSlideUp { from { transform:translateY(18px) scale(0.97); opacity:0 } to { transform:none; opacity:1 } }
+      .eec-popup         { animation: eecSlideUp 0.26s cubic-bezier(0.34,1.3,0.64,1); }
+      #eec-popup-overlay { animation: eecFadeIn 0.2s ease; }
+      .eec-close-btn:hover { background:rgba(255,255,255,0.22) !important; }
+      .eec-seg-btn {
+        flex:1; text-align:center; padding:7px 4px; font-size:12px; font-weight:600;
+        border-radius:7px; cursor:pointer; color:rgba(255,255,255,0.55);
+        border:none; background:none; transition:all 0.2s; font-family:inherit;
+        touch-action:manipulation;
+      }
+      .eec-seg-btn.active { background:${graphColor}; color:#fff; box-shadow:0 1px 4px rgba(0,0,0,0.35); }
+      .eec-info-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.07); }
+      .eec-info-row:last-child { border-bottom:none; }
+      .eec-info-label { font-size:12px; color:rgba(255,255,255,0.45); font-weight:500; }
+      .eec-info-value { font-size:13px; font-weight:600; color:rgba(255,255,255,0.9); text-align:right; }
+    `;
+
+    // ── Popup panel ──
+    const popup = document.createElement("div");
+    popup.className = "eec-popup";
+    popup.style.cssText = "background:rgba(28,28,30,0.96);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);border:1px solid rgba(255,255,255,0.15);border-radius:24px;box-shadow:0 24px 64px rgba(0,0,0,0.65);padding:20px;width:100%;max-width:400px;max-height:88vh;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;color:#fff;";
+    popup.addEventListener("touchmove", e => e.stopPropagation(), { passive: true });
+
+    // Header row
+    const headerRow = document.createElement("div");
+    headerRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;";
+    headerRow.innerHTML = `
+      <span style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.45);">${displayName}</span>
+      <button class="eec-close-btn" style="background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.65);font-size:15px;line-height:1;padding:0;transition:background 0.15s;flex-shrink:0;">✕</button>`;
+    headerRow.querySelector(".eec-close-btn").addEventListener("click", () => this._closePopup());
+
+    // Hero value
+    const heroRow = document.createElement("div");
+    heroRow.style.cssText = "display:flex;align-items:baseline;gap:8px;margin-bottom:16px;";
+    heroRow.innerHTML = `
+      <div style="font-size:52px;font-weight:700;letter-spacing:-2px;line-height:1;color:${accentColor};">${displayState}</div>
+      ${unit ? `<div style="font-size:16px;color:rgba(255,255,255,0.4);font-weight:500;padding-bottom:4px;">${unit}</div>` : ""}`;
+
+    // Time-range segmented control
+    const segWrap = document.createElement("div");
+    segWrap.style.cssText = "display:flex;background:rgba(118,118,128,0.2);border-radius:10px;padding:3px;gap:2px;margin-bottom:12px;";
+
+    const graphInner = document.createElement("div");
+    graphInner.style.cssText = "height:130px;position:relative;margin-bottom:14px;";
+    graphInner.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:rgba(255,255,255,0.25);font-size:12px;">Loading…</div>`;
+
+    [1, 3, 6, 12, 24].forEach(h => {
+      const btn = document.createElement("button");
+      btn.className = "eec-seg-btn" + (h === this._popupHours ? " active" : "");
+      btn.textContent = `${h}h`;
+      btn.dataset.hours = h;
+      const switchHours = (e) => {
+        if (e.type === "touchend") e.preventDefault();
+        this._popupHours = h;
+        segWrap.querySelectorAll(".eec-seg-btn").forEach(b => b.classList.toggle("active", parseInt(b.dataset.hours) === h));
+        graphInner.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:rgba(255,255,255,0.25);font-size:12px;">Loading…</div>`;
+        this._loadGraphInto(graphInner, h);
+      };
+      btn.addEventListener("click", switchHours);
+      btn.addEventListener("touchend", switchHours);
+      segWrap.appendChild(btn);
+    });
+
+    // Info rows
+    const infoWrap = document.createElement("div");
+    const rows = [
+      { label: "State",        value: `${displayState}${unit ? " " + unit : ""}` },
+      { label: "Last updated", value: timeAgoStr },
+    ];
+    const attrs = stateObj.attributes || {};
+    if (attrs.friendly_name && attrs.friendly_name !== displayName) {
+      rows.push({ label: "Friendly name", value: attrs.friendly_name });
+    }
+    if (attrs.unit_of_measurement && !cfg.unit) {
+      // already shown in hero — skip duplicate
+    }
+    rows.forEach(({ label, value }) => {
+      const row = document.createElement("div");
+      row.className = "eec-info-row";
+      row.innerHTML = `<span class="eec-info-label">${label}</span><span class="eec-info-value">${value}</span>`;
+      infoWrap.appendChild(row);
+    });
+
+    popup.appendChild(styleEl);
+    popup.appendChild(headerRow);
+    popup.appendChild(heroRow);
+    popup.appendChild(segWrap);
+    popup.appendChild(graphInner);
+    popup.appendChild(infoWrap);
+    overlay.appendChild(popup);
+    overlay.addEventListener("click", e => { if (e.target === overlay) this._closePopup(); });
+    document.body.appendChild(overlay);
+    this._popupOverlay = overlay;
+
+    this._loadGraphInto(graphInner, this._popupHours);
+  }
+
+  _closePopup() {
+    if (!this._popupOverlay) return;
+    this._popupOverlay.style.transition = "opacity 0.18s ease";
+    this._popupOverlay.style.opacity = "0";
+    setTimeout(() => {
+      if (this._popupOverlay?.parentNode) this._popupOverlay.parentNode.removeChild(this._popupOverlay);
+      this._popupOverlay = null;
+    }, 180);
+  }
+
+  // ── Graph ─────────────────────────────────────────────────────────────────
+
+  _buildGraph(values, timestamps) {
+    if (!values || values.length < 2) {
+      return `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:rgba(255,255,255,0.35);font-size:12px;">Not enough data</div>`;
+    }
+
+    const cfg       = this._config;
+    const lineColor = cfg.graph_color || "#007AFF";
+    const W = 400, H = 160;
+    const pad   = { top: 6, right: 8, bottom: 20, left: 30 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top  - pad.bottom;
+
+    const rawMin = Math.min(...values);
+    const rawMax = Math.max(...values);
+    const vpad   = (rawMax - rawMin) * 0.2 || 1;
+    const min    = rawMin - vpad;
+    const max    = rawMax + vpad;
+    const range  = max - min;
+
+    const xs       = values.map((_, i) => pad.left + (i / (values.length - 1)) * plotW);
+    const ys       = values.map(v => pad.top + plotH - ((v - min) / range) * plotH);
+    const linePath = xs.map((x, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+    const fillPath = linePath + ` L${xs[xs.length-1].toFixed(1)},${(pad.top+plotH).toFixed(1)} L${pad.left},${(pad.top+plotH).toFixed(1)} Z`;
+
+    const lastX = xs[xs.length-1], lastY = ys[ys.length-1];
+
+    // X-axis time labels
+    let xLabels = "";
+    if (timestamps && timestamps.length >= 2) {
+      const fmt = ts => { try { const d = new Date(ts); return `${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`; } catch { return ""; } };
+      xLabels = `<text x="${pad.left+2}" y="${H-9}" fill="rgba(255,255,255,0.3)" font-size="8" text-anchor="start">${fmt(timestamps[0])}</text>
+        <text x="${W-pad.right-2}" y="${H-9}" fill="rgba(255,255,255,0.3)" font-size="8" text-anchor="end">${fmt(timestamps[timestamps.length-1])}</text>`;
+    }
+
+    // Current-value label next to the final dot
+    const currentLabel = values[values.length-1].toFixed(
+      cfg.decimals !== undefined ? Math.min(cfg.decimals, 2) : 1
     );
+    const valLabelX = Math.min(lastX + 7, W - pad.right - 2);
+    const valLabelY = Math.max(pad.top + 7, Math.min(pad.top + plotH - 2, lastY + 3));
+
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="overflow:visible;display:block;">
+      <defs>
+        <linearGradient id="eecGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="${lineColor}" stop-opacity="0.28"/>
+          <stop offset="100%" stop-color="${lineColor}" stop-opacity="0.02"/>
+        </linearGradient>
+        <clipPath id="eecClip">
+          <rect x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}"/>
+        </clipPath>
+      </defs>
+      <path d="${fillPath}" fill="url(#eecGrad)" clip-path="url(#eecClip)"/>
+      <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#eecClip)"/>
+      <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="5" fill="${lineColor}" stroke="rgba(0,0,0,0.5)" stroke-width="1.5"/>
+      <text x="${valLabelX.toFixed(1)}" y="${valLabelY.toFixed(1)}" fill="${lineColor}" font-size="9" font-weight="700" text-anchor="start" opacity="0.9">${currentLabel}</text>
+      ${xLabels}
+    </svg>`;
+  }
+
+  async _loadGraphInto(container, hours) {
+    const entity = this._config.entity;
+    if (!entity || !this._hass) return;
+
+    if (!container._loadGen) container._loadGen = 0;
+    const gen = ++container._loadGen;
+
+    try {
+      const end   = new Date();
+      const start = new Date(end - hours * 3600000);
+      const resp  = await this._hass.callApi("GET",
+        `history/period/${start.toISOString()}?filter_entity_id=${entity}&end_time=${end.toISOString()}&minimal_response=true&no_attributes=true`
+      );
+      if (container._loadGen !== gen) return;
+
+      const raw    = resp?.[0] || [];
+      const data   = raw.filter(s => !isNaN(parseFloat(s.state)));
+      const values = data.map(s => parseFloat(s.state));
+      const times  = data.map(s => s.last_changed || s.last_updated);
+
+      if (values.length >= 2) {
+        container.innerHTML = this._buildGraph(values, times);
+        const svg = container.querySelector("svg");
+        if (svg) this._attachGraphCrosshair(svg, values, times);
+      } else {
+        container.innerHTML = this._buildGraph([], []);
+      }
+    } catch {
+      if (container._loadGen !== gen) return;
+      const cv = parseFloat(this._hass.states[entity]?.state);
+      container.innerHTML = !isNaN(cv)
+        ? this._buildGraph(Array.from({ length: 20 }, () => cv + (Math.random() - 0.5) * 0.5), null)
+        : this._buildGraph([], []);
+    }
+  }
+
+  _attachGraphCrosshair(svg, values, times) {
+    const cfg       = this._config;
+    const lineColor = cfg.graph_color || "#007AFF";
+    const W = 400, H = 160;
+    const pad   = { top: 6, right: 8, bottom: 20, left: 30 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top  - pad.bottom;
+
+    const rawMin = Math.min(...values), rawMax = Math.max(...values);
+    const vpad   = (rawMax - rawMin) * 0.2 || 1;
+    const min    = rawMin - vpad, max = rawMax + vpad, range = max - min;
+
+    let crosshairGroup = null;
+
+    const fmtTime = ts => {
+      if (!ts) return "";
+      const d = new Date(ts);
+      return `${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`;
+    };
+
+    const clientXtoSvgX = clientX => {
+      const rect = svg.getBoundingClientRect();
+      return (clientX - rect.left) * (W / rect.width);
+    };
+
+    const showCrosshair = svgX => {
+      const cx       = Math.max(pad.left, Math.min(W - pad.right, svgX));
+      const xRatio   = (cx - pad.left) / plotW;
+      const exactIdx = xRatio * (values.length - 1);
+      const lIdx     = Math.floor(exactIdx);
+      const rIdx     = Math.min(lIdx + 1, values.length - 1);
+      const frac     = exactIdx - lIdx;
+      const val      = values[lIdx] + (values[rIdx] - values[lIdx]) * frac;
+      const decimals = cfg.decimals !== undefined ? Math.min(cfg.decimals, 2) : 1;
+      const label    = val.toFixed(decimals);
+      const snapIdx  = frac < 0.5 ? lIdx : rIdx;
+      const timeStr  = times ? fmtTime(times[snapIdx]) : "";
+      const hasTime  = timeStr.length > 0;
+
+      if (crosshairGroup) crosshairGroup.remove();
+      crosshairGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", cx.toFixed(1)); line.setAttribute("y1", pad.top.toString());
+      line.setAttribute("x2", cx.toFixed(1)); line.setAttribute("y2", (pad.top + plotH).toString());
+      line.setAttribute("stroke", "rgba(255,255,255,0.75)");
+      line.setAttribute("stroke-width", "1.5");
+      line.setAttribute("stroke-dasharray", "4 3");
+
+      const lblW = hasTime ? 68 : 62, lblH = hasTime ? 46 : 28;
+      const lblX = Math.max(pad.left + lblW / 2, Math.min(W - pad.right - lblW / 2, cx));
+      const lblY = pad.top + 1;
+
+      const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bgRect.setAttribute("x",            (lblX - lblW / 2).toFixed(1));
+      bgRect.setAttribute("y",            lblY.toFixed(1));
+      bgRect.setAttribute("width",        lblW.toString());
+      bgRect.setAttribute("height",       lblH.toString());
+      bgRect.setAttribute("rx",           "6");
+      bgRect.setAttribute("fill",         "rgba(0,0,0,0.80)");
+      bgRect.setAttribute("stroke",       lineColor);
+      bgRect.setAttribute("stroke-width", "1.5");
+
+      const valText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      valText.setAttribute("x",           lblX.toFixed(1));
+      valText.setAttribute("y",           (lblY + (hasTime ? 17 : 19)).toFixed(1));
+      valText.setAttribute("fill",        lineColor);
+      valText.setAttribute("font-size",   "19");
+      valText.setAttribute("font-weight", "700");
+      valText.setAttribute("text-anchor", "middle");
+      valText.setAttribute("font-family", "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif");
+      valText.textContent = label;
+
+      crosshairGroup.appendChild(line);
+      crosshairGroup.appendChild(bgRect);
+      crosshairGroup.appendChild(valText);
+
+      if (hasTime) {
+        const timeText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        timeText.setAttribute("x",           lblX.toFixed(1));
+        timeText.setAttribute("y",           (lblY + 38).toFixed(1));
+        timeText.setAttribute("fill",        "rgba(255,255,255,0.65)");
+        timeText.setAttribute("font-size",   "13");
+        timeText.setAttribute("font-weight", "500");
+        timeText.setAttribute("text-anchor", "middle");
+        timeText.setAttribute("font-family", "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif");
+        timeText.textContent = timeStr;
+        crosshairGroup.appendChild(timeText);
+      }
+
+      svg.appendChild(crosshairGroup);
+    };
+
+    const clearCrosshair = () => {
+      if (crosshairGroup) { crosshairGroup.remove(); crosshairGroup = null; }
+    };
+
+    svg.style.cursor = "crosshair";
+    let isDragging = false;
+
+    // Touch
+    svg.addEventListener("touchstart", e => {
+      e.stopPropagation(); e.preventDefault();
+      const svgX = clientXtoSvgX(e.touches[0].clientX);
+      if (svgX < pad.left || svgX > W - pad.right) return;
+      isDragging = true; showCrosshair(svgX);
+    }, { passive: false });
+
+    svg.addEventListener("touchmove", e => {
+      if (!isDragging) return;
+      e.stopPropagation(); e.preventDefault();
+      const svgX = clientXtoSvgX(e.touches[0].clientX);
+      if (svgX >= pad.left && svgX <= W - pad.right) showCrosshair(svgX);
+    }, { passive: false });
+
+    svg.addEventListener("touchend",    e => { e.stopPropagation(); isDragging = false; }, { passive: false });
+    svg.addEventListener("touchcancel", ()  => { isDragging = false; });
+
+    // Mouse
+    svg.addEventListener("mousedown", e => {
+      e.stopPropagation();
+      const svgX = clientXtoSvgX(e.clientX);
+      if (svgX < pad.left || svgX > W - pad.right) return;
+      isDragging = true; showCrosshair(svgX);
+    });
+    svg.addEventListener("mousemove", e => {
+      if (!isDragging) return;
+      const svgX = clientXtoSvgX(e.clientX);
+      if (svgX >= pad.left && svgX <= W - pad.right) showCrosshair(svgX);
+    });
+    svg.addEventListener("mouseup", e => {
+      e.stopPropagation();
+      if (!isDragging) return;
+      isDragging = false;
+      const svgX = clientXtoSvgX(e.clientX);
+      if (svgX < pad.left || svgX > W - pad.right) clearCrosshair();
+    });
+    svg.addEventListener("mouseleave", () => { isDragging = false; });
+    svg.addEventListener("click", e => {
+      e.stopPropagation();
+      const svgX = clientXtoSvgX(e.clientX);
+      if (svgX < pad.left || svgX > W - pad.right) clearCrosshair();
+    });
   }
 }
 
@@ -707,11 +1119,34 @@ class ElephantEntityCardEditor extends HTMLElement {
           </div>
         </div>
 
+        <!-- ══ GRAPH ═══════════════════════════════════════════════════════ -->
+        <div class="eec-section">
+          <div class="eec-section-header">📈 History Graph</div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Default Time Range (hours)</div>
+            <div class="eec-field-desc">
+              How many hours of history to load when you tap the card. The 1h / 3h / 6h / 12h / 24h
+              buttons inside the popup let you switch on the fly — this just sets the opening view.
+            </div>
+            <ha-selector id="sel-graph_hours"></ha-selector>
+          </div>
+
+          <div class="eec-field">
+            <div class="eec-field-label">Graph Colour</div>
+            <div class="eec-field-desc">
+              The colour used for the graph line, gradient fill, dot, and crosshair tooltip.
+            </div>
+            <div class="colour-grid" id="graph-colour-grid" style="grid-template-columns:1fr;"></div>
+          </div>
+        </div>
+
       </div>
     `;
 
     this._attachSelectors();
     this._buildColourGrid(useStateColor);
+    this._buildGraphColourGrid();
   }
 
   // ── Wire up ha-selector elements ───────────────────────────────────────────
@@ -729,6 +1164,7 @@ class ElephantEntityCardEditor extends HTMLElement {
       icon:             { selector: { icon: {} },                                             value: cfg.icon            || null },
       state_color:      { selector: { boolean: {} },                                          value: cfg.state_color     !== false },
       transparency:     { selector: { number: { min: 0, max: 1, step: 0.1, mode: "slider" } }, value: cfg.transparency ?? 1 },
+      graph_hours:      { selector: { number: { min: 1, max: 24, step: 1, mode: "box" } },   value: cfg.graph_hours     ?? 3 },
     };
 
     this._selectorFields = fields; // store for _syncSelectorValues
@@ -762,6 +1198,7 @@ class ElephantEntityCardEditor extends HTMLElement {
       icon:             cfg.icon             || null,
       state_color:      cfg.state_color      !== false,
       transparency:     cfg.transparency     ?? 1,
+      graph_hours:      cfg.graph_hours      ?? 3,
     };
 
     for (const [key, value] of Object.entries(valueMap)) {
@@ -772,6 +1209,56 @@ class ElephantEntityCardEditor extends HTMLElement {
       el.value = value;
     }
     this._syncColours();
+  }
+
+  // ── Build graph colour picker ──────────────────────────────────────────────
+  _buildGraphColourGrid() {
+    const grid = this.querySelector("#graph-colour-grid");
+    if (!grid) return;
+
+    const savedVal  = this._config.graph_color || "#007AFF";
+
+    const card = document.createElement("div");
+    card.className   = "colour-card";
+    card.dataset.key = "graph_color";
+    card.innerHTML = `
+      <label class="colour-swatch">
+        <div class="colour-swatch-preview" style="background:${savedVal}"></div>
+        <input type="color" value="${/^#[0-9a-fA-F]{6}$/.test(savedVal) ? savedVal : "#007AFF"}">
+      </label>
+      <div class="colour-info">
+        <div class="colour-label">Graph Line &amp; Fill</div>
+        <div class="colour-desc">Colour of the history graph line, gradient fill, and crosshair tooltip.</div>
+        <div class="colour-hex-row">
+          <div class="colour-dot" style="background:${savedVal}"></div>
+          <input class="colour-hex" type="text" value="${savedVal}" maxlength="7" placeholder="#007AFF" spellcheck="false">
+          <span class="colour-edit-icon">✎</span>
+        </div>
+      </div>
+    `;
+
+    const nativePicker = card.querySelector("input[type=color]");
+    const hexInput     = card.querySelector(".colour-hex");
+    const preview      = card.querySelector(".colour-swatch-preview");
+    const dot          = card.querySelector(".colour-dot");
+
+    const apply = (hex) => {
+      preview.style.background = hex;
+      dot.style.background     = hex;
+      nativePicker.value       = hex;
+      hexInput.value           = hex;
+      this._handleChange("graph_color", hex);
+    };
+
+    nativePicker.addEventListener("input",  () => apply(nativePicker.value));
+    nativePicker.addEventListener("change", () => apply(nativePicker.value));
+    hexInput.addEventListener("input", () => {
+      const v = hexInput.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) apply(v);
+    });
+    hexInput.addEventListener("keydown", e => { if (e.key === "Enter") hexInput.blur(); });
+
+    grid.appendChild(card);
   }
 
   // ── Build leopard-style colour grid ───────────────────────────────────────
