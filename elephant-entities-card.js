@@ -540,6 +540,15 @@ class ElephantEntityCard extends HTMLElement {
     </svg>`;
   }
 
+  _isBinarySensor() {
+    const entity  = this._config?.entity;
+    const domain  = entity?.split(".")?.[0];
+    if (domain === "binary_sensor") return true;
+    // Also treat plain on/off entities (e.g. input_boolean, switch) as binary
+    const state = this._hass?.states[entity]?.state;
+    return state === "on" || state === "off";
+  }
+
   async _loadGraphInto(container, hours) {
     const entity = this._config.entity;
     if (!entity || !this._hass) return;
@@ -547,6 +556,41 @@ class ElephantEntityCard extends HTMLElement {
     if (!container._loadGen) container._loadGen = 0;
     const gen = ++container._loadGen;
 
+    // ── Binary sensors: delegate to step-chart renderer ──────────────────────
+    if (this._isBinarySensor()) {
+      try {
+        const end   = new Date();
+        const start = new Date(end - hours * 3600000);
+        const resp  = await this._hass.callApi("GET",
+          `history/period/${start.toISOString()}?filter_entity_id=${entity}&end_time=${end.toISOString()}&minimal_response=true&no_attributes=true`
+        );
+        if (container._loadGen !== gen) return;
+
+        const raw   = resp?.[0] || [];
+        const valid = raw.filter(s => s.state === "on" || s.state === "off");
+
+        if (!valid.length) {
+          container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:rgba(255,255,255,0.25);font-size:12px;">No history in this period</div>`;
+          return;
+        }
+
+        const states      = valid.map(s => s.state);
+        const timestamps  = valid.map(s => s.last_changed || s.last_updated);
+        const windowStart = start.getTime();
+        const windowEnd   = end.getTime();
+        const graphColor  = this._config.graph_color || "#007AFF";
+
+        container.innerHTML = this._buildOccupancyGraph(states, timestamps, windowStart, windowEnd, graphColor);
+        const svg = container.querySelector("svg");
+        if (svg) this._attachOccupancyCrosshair(svg, states, timestamps, windowStart, windowEnd, graphColor);
+      } catch {
+        if (container._loadGen !== gen) return;
+        container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:rgba(255,255,255,0.25);font-size:12px;">Could not load history</div>`;
+      }
+      return;
+    }
+
+    // ── Numeric sensors: original line graph ──────────────────────────────────
     try {
       const end   = new Date();
       const start = new Date(end - hours * 3600000);
@@ -574,6 +618,199 @@ class ElephantEntityCard extends HTMLElement {
         ? this._buildGraph(Array.from({ length: 20 }, () => cv + (Math.random() - 0.5) * 0.5), null)
         : this._buildGraph([], []);
     }
+  }
+
+  // ── Binary / occupancy step-chart ─────────────────────────────────────────
+
+  _buildOccupancyGraph(states, timestamps, windowStart, windowEnd, activeColor) {
+    const clearColor = "rgba(255,255,255,0.2)";
+    const W = 400, H = 160;
+    const pad   = { top: 30, right: 10, bottom: 26, left: 44 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top  - pad.bottom;
+    const yOn    = pad.top;
+    const yOff   = pad.top + plotH;
+
+    const span = windowEnd - windowStart || 1;
+    const toX  = t => pad.left + ((t - windowStart) / span) * plotW;
+    const endX = W - pad.right;
+
+    const points = timestamps.map((ts, i) => ({
+      x:     Math.max(pad.left, Math.min(endX, toX(new Date(ts).getTime()))),
+      y:     states[i] === "on" ? yOn : yOff,
+      state: states[i],
+    }));
+
+    // Step path
+    let stepD = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+    for (let i = 1; i < points.length; i++) {
+      stepD += ` H${points[i].x.toFixed(1)} V${points[i].y.toFixed(1)}`;
+    }
+    stepD += ` H${endX}`;
+
+    // Filled area under "on" portions
+    const fillD = stepD + ` V${yOff} H${pad.left} Z`;
+
+    // Coloured line segments per state
+    let segments = "";
+    for (let i = 0; i < points.length; i++) {
+      const x1  = points[i].x;
+      const x2  = i < points.length - 1 ? points[i + 1].x : endX;
+      const col = points[i].state === "on" ? activeColor : clearColor;
+      segments += `<line x1="${x1.toFixed(1)}" y1="${points[i].y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${points[i].y.toFixed(1)}" stroke="${col}" stroke-width="2.5" stroke-linecap="round"/>`;
+      if (i < points.length - 1) {
+        segments += `<line x1="${points[i+1].x.toFixed(1)}" y1="${points[i].y.toFixed(1)}" x2="${points[i+1].x.toFixed(1)}" y2="${points[i+1].y.toFixed(1)}" stroke="${col}" stroke-width="2" stroke-linecap="round" opacity="0.6"/>`;
+      }
+    }
+
+    // Y-axis labels
+    const yLabels = `
+      <text x="${pad.left - 4}" y="${(yOn + 4).toFixed(1)}"  fill="${activeColor}" font-size="7.5" text-anchor="end" opacity="0.85">On</text>
+      <text x="${pad.left - 4}" y="${(yOff + 4).toFixed(1)}" fill="${clearColor}"  font-size="7.5" text-anchor="end" opacity="0.85">Off</text>`;
+
+    // Guide lines
+    const grid = `
+      <line x1="${pad.left}" y1="${yOn}"  x2="${W-pad.right}" y2="${yOn}"  stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+      <line x1="${pad.left}" y1="${yOff}" x2="${W-pad.right}" y2="${yOff}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`;
+
+    // Time axis
+    const fmtT = ms => {
+      const d = new Date(ms);
+      return `${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`;
+    };
+    const midT = (windowStart + windowEnd) / 2;
+    const midX = toX(midT);
+    const timeAxis = `
+      <text x="${pad.left}"        y="${H - 7}" fill="rgba(255,255,255,0.25)" font-size="7.5" text-anchor="start">${fmtT(windowStart)}</text>
+      <text x="${midX.toFixed(1)}" y="${H - 7}" fill="rgba(255,255,255,0.25)" font-size="7.5" text-anchor="middle">${fmtT(midT)}</text>
+      <text x="${W - pad.right}"   y="${H - 7}" fill="rgba(255,255,255,0.25)" font-size="7.5" text-anchor="end">${fmtT(windowEnd)}</text>`;
+
+    return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;overflow:visible;">
+      ${grid}
+      ${yLabels}
+      <path d="${fillD}" fill="${activeColor}" opacity="0.12"/>
+      ${segments}
+      ${timeAxis}
+    </svg>`;
+  }
+
+  _attachOccupancyCrosshair(svg, states, timestamps, windowStart, windowEnd, activeColor) {
+    const clearColor = "rgba(255,255,255,0.2)";
+    const W = 400, H = 160;
+    const pad   = { top: 30, right: 10, bottom: 26, left: 44 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top  - pad.bottom;
+    const span  = windowEnd - windowStart || 1;
+
+    let crosshairGroup = null;
+    let isDragging     = false;
+
+    const clientXtoSvgX = clientX => {
+      const rect = svg.getBoundingClientRect();
+      return (clientX - rect.left) * (W / rect.width);
+    };
+
+    const svgXtoTime = svgX => windowStart + ((svgX - pad.left) / plotW) * span;
+
+    const getStateAtTime = t => {
+      let state = states[0];
+      for (let i = 0; i < timestamps.length; i++) {
+        if (new Date(timestamps[i]).getTime() <= t) state = states[i];
+        else break;
+      }
+      return state;
+    };
+
+    const fmtTime = ms => {
+      const d = new Date(ms);
+      return `${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`;
+    };
+
+    const showCrosshair = svgX => {
+      const cx    = Math.max(pad.left, Math.min(W - pad.right, svgX));
+      const t     = svgXtoTime(cx);
+      const state = getStateAtTime(t);
+      const isOn  = state === "on";
+      const color = isOn ? activeColor : clearColor;
+      const label = isOn ? "On" : "Off";
+
+      if (crosshairGroup) crosshairGroup.remove();
+      crosshairGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", cx.toFixed(1)); line.setAttribute("y1", pad.top.toString());
+      line.setAttribute("x2", cx.toFixed(1)); line.setAttribute("y2", (pad.top + plotH).toString());
+      line.setAttribute("stroke", "rgba(255,255,255,0.75)");
+      line.setAttribute("stroke-width", "1.5");
+      line.setAttribute("stroke-dasharray", "4 3");
+
+      const lblW = 64, lblH = 44;
+      const lblX = Math.max(pad.left + lblW / 2, Math.min(W - pad.right - lblW / 2, cx));
+      const lblY = pad.top + 1;
+
+      const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bgRect.setAttribute("x",            (lblX - lblW / 2).toFixed(1));
+      bgRect.setAttribute("y",            lblY.toFixed(1));
+      bgRect.setAttribute("width",        lblW.toString());
+      bgRect.setAttribute("height",       lblH.toString());
+      bgRect.setAttribute("rx",           "6");
+      bgRect.setAttribute("fill",         "rgba(0,0,0,0.80)");
+      bgRect.setAttribute("stroke",       color);
+      bgRect.setAttribute("stroke-width", "1.5");
+
+      const valText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      valText.setAttribute("x",           lblX.toFixed(1));
+      valText.setAttribute("y",           (lblY + 16).toFixed(1));
+      valText.setAttribute("fill",        color);
+      valText.setAttribute("font-size",   "14");
+      valText.setAttribute("font-weight", "700");
+      valText.setAttribute("text-anchor", "middle");
+      valText.setAttribute("font-family", "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif");
+      valText.textContent = label;
+
+      const timeText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      timeText.setAttribute("x",           lblX.toFixed(1));
+      timeText.setAttribute("y",           (lblY + 33).toFixed(1));
+      timeText.setAttribute("fill",        "rgba(255,255,255,0.65)");
+      timeText.setAttribute("font-size",   "12");
+      timeText.setAttribute("font-weight", "500");
+      timeText.setAttribute("text-anchor", "middle");
+      timeText.setAttribute("font-family", "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif");
+      timeText.textContent = fmtTime(t);
+
+      crosshairGroup.appendChild(line);
+      crosshairGroup.appendChild(bgRect);
+      crosshairGroup.appendChild(valText);
+      crosshairGroup.appendChild(timeText);
+      svg.appendChild(crosshairGroup);
+    };
+
+    const clearCrosshair = () => {
+      if (crosshairGroup) { crosshairGroup.remove(); crosshairGroup = null; }
+    };
+
+    svg.style.cursor = "crosshair";
+
+    svg.addEventListener("touchstart", e => {
+      e.stopPropagation(); e.preventDefault();
+      const svgX = clientXtoSvgX(e.touches[0].clientX);
+      if (svgX < pad.left || svgX > W - pad.right) return;
+      isDragging = true; showCrosshair(svgX);
+    }, { passive: false });
+
+    svg.addEventListener("touchmove", e => {
+      if (!isDragging) return;
+      e.stopPropagation(); e.preventDefault();
+      const svgX = clientXtoSvgX(e.touches[0].clientX);
+      if (svgX >= pad.left && svgX <= W - pad.right) showCrosshair(svgX);
+    }, { passive: false });
+
+    svg.addEventListener("touchend",    e => { e.stopPropagation(); isDragging = false; clearCrosshair(); }, { passive: false });
+    svg.addEventListener("touchcancel", ()  => { isDragging = false; clearCrosshair(); });
+
+    svg.addEventListener("mouseenter", () => {});
+    svg.addEventListener("mousemove",  e => { showCrosshair(clientXtoSvgX(e.clientX)); });
+    svg.addEventListener("mouseleave", clearCrosshair);
   }
 
   _attachGraphCrosshair(svg, values, times) {
