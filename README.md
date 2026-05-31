@@ -1,5 +1,7 @@
 # 🐘 Elephant Entity Card
 
+*** CUSTOM  DASHBOARD CARD, DESIGN FOR ONE SPECIFIC USER ***
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
 A compact Home Assistant entity card with dynamic icons and full colour control.
